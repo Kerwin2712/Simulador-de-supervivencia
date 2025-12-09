@@ -16,6 +16,8 @@ from cerebro import Cerebro
 import math
 
 
+import random
+
 class Persona:
     def __init__(self, imagen, mundo, cerebro=None):
         self.mundo = mundo
@@ -27,13 +29,13 @@ class Persona:
             # 2 entradas (dx, dy a comida), 6 ocultas, 4 salidas (arriba, abajo, izq, der)
             self.cerebro = Cerebro(2, 6, 4)
         
-        # Posicion
-        self.x = mundo.ANCHO // 2
-        self.y = mundo.ALTO // 2
-        
         # Dimensiones del sprite (4x4)
         self.ancho_sprite = self.imagen.get_width() // 4
         self.alto_sprite = self.imagen.get_height() // 4
+
+        # Posicion
+        self.x = random.randint(0, mundo.ANCHO - self.ancho_sprite)
+        self.y = random.randint(0, mundo.ALTO - self.alto_sprite)
         
         # Estado de animacion
         self.direccion = 0 # 0: Abajo, 1: Izquierda, 2: Derecha, 3: Arriba
@@ -72,11 +74,38 @@ class Persona:
         self.src_rect = pygame.Rect(x_recorte, y_recorte, self.ancho_sprite, self.alto_sprite)
         self.mundo.PANTALLA.blit(self.imagen, (self.x, self.y), self.src_rect)
 
-    def mover(self, dx, dy):
-        # Actualizar posicion
-        self.x += dx * self.velocidad
-        self.y += dy * self.velocidad
+    def mover(self, dx, dy, otros):
+        # --- MOVIEMIENTO EN X ---
+        futuro_x = self.x + dx * self.velocidad
+        futuro_rect_x = pygame.Rect(futuro_x, self.y, self.ancho_sprite, self.alto_sprite)
         
+        colision_x = False
+        if otros:
+            for otro in otros:
+                if otro is not self and otro.vivo:
+                    if futuro_rect_x.colliderect(otro.rect):
+                        colision_x = True
+                        break
+        
+        if not colision_x:
+            self.x = futuro_x
+
+        # --- MOVIEMIENTO EN Y ---
+        futuro_y = self.y + dy * self.velocidad
+        # Usamos self.x ya actualizado (o no) para el rectangulo de Y
+        futuro_rect_y = pygame.Rect(self.x, futuro_y, self.ancho_sprite, self.alto_sprite)
+        
+        colision_y = False
+        if otros:
+            for otro in otros:
+                if otro is not self and otro.vivo:
+                    if futuro_rect_y.colliderect(otro.rect):
+                        colision_y = True
+                        break
+        
+        if not colision_y:
+            self.y = futuro_y
+            
         # Determinar direccion
         if dy > 0: self.direccion = 0 # Abajo
         elif dy < 0: self.direccion = 3 # Arriba
@@ -113,7 +142,7 @@ class Persona:
         if self.energia > 100:
             self.energia = 100
 
-    def pensar(self, comidas):
+    def pensar(self, comidas, otros=None):
         if not hasattr(self, 'min_dist_food'):
             self.min_dist_food = float('inf')
             
@@ -162,6 +191,19 @@ class Persona:
             dy_neto = val_abajo - val_arriba
             dx_neto = val_der - val_izq
             
+            # --- ATRACCION / INSTINTO ---
+            # Agregar un vector de "instinto" hacia la comida
+            distancia = math.sqrt(cercana[0]**2 + cercana[1]**2)
+            if distancia > 0:
+                instinto_x = cercana[0] / distancia
+                instinto_y = cercana[1] / distancia
+                
+                # Peso del instinto (0.3 = 30% influencia)
+                PESO_INSTINTO = 0.3
+                
+                dx_neto += instinto_x * PESO_INSTINTO
+                dy_neto += instinto_y * PESO_INSTINTO
+
             # Umbral pequeño para evitar drifting
             if abs(dy_neto) > 0.1:
                 dy_mov = 1 if dy_neto > 0 else -1
@@ -171,7 +213,7 @@ class Persona:
             
         if dx_mov != 0 or dy_mov != 0:
             self.moving = True
-            self.mover(dx_mov, dy_mov)
+            self.mover(dx_mov, dy_mov, otros)
         else:
             self.moving = False
     

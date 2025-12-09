@@ -166,10 +166,35 @@ def dibujar_estadisticas(superficie, poblacion):
         y += 20
 
 
+def reiniciar_simulacion():
+    global poblacion, generacion
+    if os.path.exists(ARCHIVO_POBLACION):
+        os.remove(ARCHIVO_POBLACION)
+        print("Archivo de población eliminado.")
+    
+    generacion = 1
+    poblacion, _ = crear_poblacion() # Esto recargará (o creará nueva si no hay archivo)
+    # Como acabamos de borrar el archivo, crear_poblacion iniciara de 0
+    resetear_comida()
+    print("Simulación reiniciada.")
+
+# Boton Reset
+rect_boton_reset = pygame.Rect(mundo.ANCHO - 210, mundo.ALTO - 60, 200, 40)
+def dibujar_ui_reset(superficie):
+    pygame.draw.rect(superficie, (200, 50, 50), rect_boton_reset)
+    texto = font_ui.render("Reiniciar Todo", True, (255, 255, 255))
+    superficie.blit(texto, (rect_boton_reset.x + 20, rect_boton_reset.y + 10))
+
 #Bucle principal
 while True:
     # 1. Eventos
-    mundo.eventos()
+    for evento in pygame.event.get():
+        if evento.type == pygame.QUIT:
+            pygame.quit()
+            quit()
+        if evento.type == pygame.MOUSEBUTTONDOWN:
+            if rect_boton_reset.collidepoint(evento.pos):
+                reiniciar_simulacion()
     
     # 2. Actualizar logica
     
@@ -178,7 +203,7 @@ while True:
     for p in poblacion:
         if p.vivo:
             alguien_vivo = True
-            p.pensar(comidas) # IA decide
+            p.pensar(comidas, poblacion) # IA decide
             
             # Comprobar colisiones con comida
             lista_colisiones = pygame.sprite.spritecollide(p, comidas, True)
@@ -212,6 +237,7 @@ while True:
     
     # UI
     dibujar_estadisticas(mundo.PANTALLA, poblacion)
+    dibujar_ui_reset(mundo.PANTALLA)
     texto_gen = font_ui.render(f"Gen: {generacion} | Vivos: {personas_vivas}", True, (255, 255, 255))
     mundo.PANTALLA.blit(texto_gen, (10, 10))
     
