@@ -14,8 +14,6 @@ La energia debe bajar con el tiempo y cuando llegue a 0 la persona muere.
 import pygame
 from cerebro import Cerebro
 import math
-
-
 import random
 
 class Persona:

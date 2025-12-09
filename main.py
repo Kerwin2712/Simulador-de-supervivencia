@@ -15,7 +15,7 @@ mundo = Mundo(pygame.image.load("images/Pista.png"))
 
 # Configuración Evolución
 # Configuración Evolución
-TAMANO_POBLACION = 10
+TAMANO_POBLACION = 1
 poblacion = []
 imagen_persona = pygame.image.load("images/LIDER.png").convert_alpha()
 ARCHIVO_POBLACION = "poblacion.pkl"
@@ -70,9 +70,10 @@ def crear_poblacion():
 poblacion, generacion = crear_poblacion()
 
 comidas = pygame.sprite.Group()
+#Crear comida 
 def resetear_comida():
     comidas.empty()
-    for _ in range(10): # Mas comida para 20 agentes
+    for _ in range(20): # Mas comida para 20 agentes
         x = random.randint(0, mundo.ANCHO)
         y = random.randint(0, mundo.ALTO)
         comida = Comida(x, y, mundo=mundo)
