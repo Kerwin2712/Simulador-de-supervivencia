@@ -137,33 +137,7 @@ def nueva_generacion(poblacion_actual):
     resetear_comida()
     return nueva_pob
 
-def dibujar_estadisticas(superficie, poblacion):
-    # Crear superficie semitransparente para el panel
-    panel = pygame.Surface((220, mundo.ALTO))
-    panel.set_alpha(150) # Transparencia
-    panel.fill((0, 0, 0)) # Negro
-    
-    superficie.blit(panel, (mundo.ANCHO - 220, 0))
-    
-    y = 10
-    titulo = font_ui.render("Energía Agentes", True, (255, 255, 255))
-    superficie.blit(titulo, (mundo.ANCHO - 210, y))
-    y += 30
-    
-    for i, p in enumerate(poblacion):
-        # Color basado en estado
-        color = (0, 255, 0) if p.vivo else (100, 100, 100)
-        
-        # Etiqueta
-        texto = font_ui.render(f"#{i+1}", True, (255, 255, 255))
-        superficie.blit(texto, (mundo.ANCHO - 210, y))
-        
-        # Barra de energia
-        ancho_barra = int(p.energia)
-        rect_barra = pygame.Rect(mundo.ANCHO - 160, y + 5, ancho_barra, 10)
-        pygame.draw.rect(superficie, color, rect_barra)
-        
-        y += 20
+
 
 
 def reiniciar_simulacion():
@@ -180,10 +154,32 @@ def reiniciar_simulacion():
 
 # Boton Reset
 rect_boton_reset = pygame.Rect(mundo.ANCHO - 210, mundo.ALTO - 60, 200, 40)
+
+# Botones Velocidad
+velocidad_simulacion = 120 # FPS Inicial
+rect_boton_menos = pygame.Rect(mundo.ANCHO - 210, mundo.ALTO - 110, 40, 40)
+rect_boton_mas = pygame.Rect(mundo.ANCHO - 50, mundo.ALTO - 110, 40, 40)
+
 def dibujar_ui_reset(superficie):
+    # Reset
     pygame.draw.rect(superficie, (200, 50, 50), rect_boton_reset)
     texto = font_ui.render("Reiniciar Todo", True, (255, 255, 255))
     superficie.blit(texto, (rect_boton_reset.x + 20, rect_boton_reset.y + 10))
+    
+    # Velocidad
+    # Boton -
+    pygame.draw.rect(superficie, (100, 100, 100), rect_boton_menos)
+    texto_menos = font_ui.render("-", True, (255, 255, 255))
+    superficie.blit(texto_menos, (rect_boton_menos.x + 15, rect_boton_menos.y + 10))
+    
+    # Texto Velocidad
+    texto_vel = font_ui.render(f"Vel: {velocidad_simulacion}", True, (255, 255, 255))
+    superficie.blit(texto_vel, (mundo.ANCHO - 160, mundo.ALTO - 100))
+    
+    # Boton +
+    pygame.draw.rect(superficie, (100, 100, 100), rect_boton_mas)
+    texto_mas = font_ui.render("+", True, (255, 255, 255))
+    superficie.blit(texto_mas, (rect_boton_mas.x + 12, rect_boton_mas.y + 10))
 
 #Bucle principal
 while True:
@@ -195,6 +191,12 @@ while True:
         if evento.type == pygame.MOUSEBUTTONDOWN:
             if rect_boton_reset.collidepoint(evento.pos):
                 reiniciar_simulacion()
+            
+            # Control Velocidad
+            if rect_boton_menos.collidepoint(evento.pos):
+                velocidad_simulacion = max(10, velocidad_simulacion - 100)
+            if rect_boton_mas.collidepoint(evento.pos):
+                velocidad_simulacion += 100
     
     # 2. Actualizar logica
     
@@ -236,7 +238,7 @@ while True:
             # p.mostrar_estado() 
     
     # UI
-    dibujar_estadisticas(mundo.PANTALLA, poblacion)
+    # dibujar_estadisticas(mundo.PANTALLA, poblacion) # Sidebar removida
     dibujar_ui_reset(mundo.PANTALLA)
     texto_gen = font_ui.render(f"Gen: {generacion} | Vivos: {personas_vivas}", True, (255, 255, 255))
     mundo.PANTALLA.blit(texto_gen, (10, 10))
@@ -245,5 +247,5 @@ while True:
     pygame.display.update()
     # Acelerar un poco para entrenar mas rapido si se desea (o quitar el limitador FPS)
     # mundo.RELOJ.tick(mundo.FPS) 
-    mundo.RELOJ.tick(1000) # Sin limite practico para simular rapido
+    mundo.RELOJ.tick(velocidad_simulacion) # Velocidad variable
 

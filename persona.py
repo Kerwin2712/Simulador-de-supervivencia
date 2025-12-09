@@ -40,7 +40,7 @@ class Persona:
         # Estado de animacion
         self.direccion = 0 # 0: Abajo, 1: Izquierda, 2: Derecha, 3: Arriba
         self.frame = 0     # 0-3
-        self.velocidad = 5
+        self.velocidad = 4
         self.contador_animacion = 0
         self.velocidad_animacion = 10 # Cambiar frame cada X ticks
         
@@ -73,6 +73,20 @@ class Persona:
         
         self.src_rect = pygame.Rect(x_recorte, y_recorte, self.ancho_sprite, self.alto_sprite)
         self.mundo.PANTALLA.blit(self.imagen, (self.x, self.y), self.src_rect)
+        
+        # --- BARRA DE VIDA ---
+        # Dibujar barra sobre la cabeza (y - 10)
+        ancho_barra_total = self.ancho_sprite
+        alto_barra = 5
+        x_barra = self.x
+        y_barra = self.y - 10
+        
+        # Fondo rojo (daño/vacío)
+        pygame.draw.rect(self.mundo.PANTALLA, (255, 0, 0), (x_barra, y_barra, ancho_barra_total, alto_barra))
+        
+        # Frente verde (energia actual)
+        pixeles_vida = int((self.energia / 100) * ancho_barra_total)
+        pygame.draw.rect(self.mundo.PANTALLA, (0, 255, 0), (x_barra, y_barra, pixeles_vida, alto_barra))
 
     def mover(self, dx, dy, otros):
         # --- MOVIEMIENTO EN X ---
