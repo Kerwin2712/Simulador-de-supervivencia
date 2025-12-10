@@ -11,224 +11,356 @@ cambiando de fila se cambia la direccion y cambiando de columna simula estar cam
 estas personas seran controladas por redes neuronales.
 La energia debe bajar con el tiempo y cuando llegue a 0 la persona muere.
 '''
+
 import pygame
 from cerebro import Cerebro
+from personaje import Personaje
+from animal import Conejo, Zorro
 import math
 import random
 
-class Persona:
-    def __init__(self, imagen, mundo, cerebro=None):
-        self.mundo = mundo
-        self.imagen = imagen
-        
-        if cerebro:
-            self.cerebro = cerebro
-        else:
-            # 2 entradas (dx, dy a comida), 6 ocultas, 4 salidas (arriba, abajo, izq, der)
-            self.cerebro = Cerebro(2, 6, 4)
-        
-        # Dimensiones del sprite (4x4)
-        self.ancho_sprite = self.imagen.get_width() // 4
-        self.alto_sprite = self.imagen.get_height() // 4
+class Persona(Personaje):
+    def __init__(self, imagen, mundo, cerebro_movimiento=None, cerebro_decision=None):
+        super().__init__(mundo, imagen, cerebro_movimiento, cerebro_decision)
 
-        # Posicion
-        self.x = random.randint(0, mundo.ANCHO - self.ancho_sprite)
-        self.y = random.randint(0, mundo.ALTO - self.alto_sprite)
-        
-        # Estado de animacion
-        self.direccion = 0 # 0: Abajo, 1: Izquierda, 2: Derecha, 3: Arriba
-        self.frame = 0     # 0-3
-        self.velocidad = 4
-        self.contador_animacion = 0
-        self.velocidad_animacion = 10 # Cambiar frame cada X ticks
-        
-        #Estado de la persona
-        self.vivo = True
-        self.moving = False
-        self.energia = 100
-        self.tiempo_vivo = 0 # Fitness
-        self.comidas_comidas = 0 # Cantidad de comida ingerida
-        self.contador_energia = 0
-        self.velocidad_energia = 1
-        
-        # Rectangulo de recorte inicial
-        self.src_rect = pygame.Rect(0, 0, self.ancho_sprite, self.alto_sprite)
-        self.rect = pygame.Rect(self.x, self.y, self.ancho_sprite, self.alto_sprite)
-        
-        # Fuente para mostrar estado
-        self.font = pygame.font.SysFont(None, 24)
+        self.velocidad = 3
+
+        self.inventario = []
+
+        # Por defecto van a casa si existen
+        if self.mundo.casas:
+            self.objetivo = self.mundo.casas
+            self.buscar_objetivo(self.objetivo)
     
-    def get_vivo(self): return self.vivo
-    def get_moving(self): return self.moving
-    def set_vivo(self, vivo): self.vivo = vivo
-    def set_moving(self, moving): self.moving = moving
+    def entrar_casa(self):
+        if self.mundo.casas:
+            self.objetivo = self.mundo.casas
+            self.buscar_objetivo(self.objetivo)
+            self.mostrarme = False
+            self.in_home = True
+    
+    def salir_casa(self):
+        self.mostrarme = True
+        self.in_home = False
 
-    def mostrar(self):
-        # Calcular rectangulo de recorte basado en direccion y frame
-        # Asumiendo orden de filas: 0-Abajo, 1-Izquierda, 2-Derecha, 3-Arriba
-        x_recorte = self.frame * self.ancho_sprite
-        y_recorte = self.direccion * self.alto_sprite
-        
-        self.src_rect = pygame.Rect(x_recorte, y_recorte, self.ancho_sprite, self.alto_sprite)
-        self.mundo.PANTALLA.blit(self.imagen, (self.x, self.y), self.src_rect)
-        
-        # --- BARRA DE VIDA ---
-        # Dibujar barra sobre la cabeza (y - 10)
-        ancho_barra_total = self.ancho_sprite
-        alto_barra = 5
-        x_barra = self.x
-        y_barra = self.y - 10
-        
-        # Fondo rojo (daño/vacío)
-        pygame.draw.rect(self.mundo.PANTALLA, (255, 0, 0), (x_barra, y_barra, ancho_barra_total, alto_barra))
-        
-        # Frente verde (energia actual)
-        pixeles_vida = int((self.energia / 100) * ancho_barra_total)
-        pygame.draw.rect(self.mundo.PANTALLA, (0, 255, 0), (x_barra, y_barra, pixeles_vida, alto_barra))
+    def guardar_item(self, item):
+        if len(self.inventario) < 10:
+            self.inventario.append(item)
+            
+    def buscar_familia(self, tipos):
+        candidatos = [p for p in self.mundo.personas if isinstance(p, tipos) and p is not self and p.vivo]
+        return candidatos
 
-    def mover(self, dx, dy, otros):
-        # --- MOVIEMIENTO EN X ---
-        futuro_x = self.x + dx * self.velocidad
-        futuro_rect_x = pygame.Rect(futuro_x, self.y, self.ancho_sprite, self.alto_sprite)
-        
-        colision_x = False
-        if otros:
-            for otro in otros:
-                if otro is not self and otro.vivo:
-                    if futuro_rect_x.colliderect(otro.rect):
-                        colision_x = True
-                        break
-        
-        if not colision_x:
-            self.x = futuro_x
+    def pensar(self, comidas, otros_personajes):
+        # Implementacion generica o abstracta
+        pass
 
-        # --- MOVIEMIENTO EN Y ---
-        futuro_y = self.y + dy * self.velocidad
-        # Usamos self.x ya actualizado (o no) para el rectangulo de Y
-        futuro_rect_y = pygame.Rect(self.x, futuro_y, self.ancho_sprite, self.alto_sprite)
-        
-        colision_y = False
-        if otros:
-            for otro in otros:
-                if otro is not self and otro.vivo:
-                    if futuro_rect_y.colliderect(otro.rect):
-                        colision_y = True
-                        break
-        
-        if not colision_y:
-            self.y = futuro_y
+class Hombre(Persona):
+    def __init__(self, nombre, mundo, cerebro_movimiento=None, cerebro_decision=None):
+        imagen = pygame.image.load("images/hombre.png")
+        #Escalar imagen
+        imagen = pygame.transform.scale(imagen, (191, 246))
+        if not cerebro_decision:
+            # Inputs: Energia, Hambre, DistanciaPresa (Conejo), DistanciaEnemigo (Zorro)
+            # Outputs: Caza, Pelea, Come
+            cerebro_decision = Cerebro(4, 6, 3) 
             
-        # Determinar direccion
-        if dy > 0: self.direccion = 0 # Abajo
-        elif dy < 0: self.direccion = 3 # Arriba
-        
-        if dx < 0: self.direccion = 1 # Izquierda
-        elif dx > 0: self.direccion = 2 # Derecha
+        super().__init__(imagen, mundo, cerebro_movimiento, cerebro_decision)
+        self.nombre = nombre
+        self.velocidad = 5
+        self.energia_maxima = 200
+        self.base_fuerza = 25 # Mas fuerte que animales
+    
+    def pensar(self, comidas, otros_personajes):
+        """
+        Hombre: Caza, pelea, come, lleva comida a casa
+        Prioridad: Hambre > Defensa > Inventario > Sueño
+        """
+        # --- 0. HAMBRE / RECOLECCION ---
+        # Si tiene hambre, la comida es prioridad (incluso sobre el sueño)
+        if self.hambre > 20:
+            # A. Tengo comida en inventario? -> Ir a casa a guardar/comer
+            meat_in_inv = [i for i in self.inventario if isinstance(i, (Zorro, Conejo))]
+            if meat_in_inv:
+                if self.mundo.casas: 
+                    self.objetivo = self.mundo.casas
+                # Si llega a casa, la logica de guardar/comer debe estar en 'actualizar' o collision
+                pass
             
-        # Actualizar animacion
-        self.contador_animacion += 1
-        if self.contador_animacion >= self.velocidad_animacion:
-            self.frame = (self.frame + 1) % 4
-            self.contador_animacion = 0
+            # B. Hay comida en casa? -> Ir a casa
+            # (Simplificacion: Asumimos que sabe lo que hay en casa)
+            # if self.mundo.casas and self.mundo.casas[0].almacen: ...
             
-    def actualizar(self):
-        if self.vivo:
-            self.tiempo_vivo += 1
+            # C. Cazar / Recolectar
+            presas = [p for p in otros_personajes if isinstance(p, (Conejo, Zorro)) and p.vivo]
+            if presas and self.fuerza > 5: # Solo caza si tiene fuerza
+                self.objetivo = presas
+            else:
+                # Recolectar bayas
+                self.objetivo = comidas
             
-        # Limites de pantalla
-        self.contador_energia += 1
-        if self.contador_energia >= self.velocidad_energia:
-            self.energia -= 1
-            self.contador_energia = 0
-        
-        if self.energia <= 0:
-            self.morir()
-            
-        self.x = max(0, min(self.x, self.mundo.ANCHO - self.ancho_sprite))
-        self.y = max(0, min(self.y, self.mundo.ALTO - self.alto_sprite))
-        self.rect.topleft = (self.x, self.y)
-            
-    def alimentarse(self, valor):
-        self.energia += valor
-        self.comidas_comidas += 1
-        if self.energia > 100:
-            self.energia = 100
-
-    def pensar(self, comidas, otros=None):
-        if not hasattr(self, 'min_dist_food'):
-            self.min_dist_food = float('inf')
-            
-        if not comidas:
-            self.target_food = None
+            if self.objetivo:
+                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
             return
 
-        # Buscar comida mas cercana
-        cx, cy = self.x + self.ancho_sprite/2, self.y + self.alto_sprite/2
-        cercana = None
-        dist_min = float('inf')
+        # --- 1. DEFENSA / AGRESION ---
+        enemigos = [p for p in otros_personajes if isinstance(p, Zorro) and p.vivo]
+        # Distancia segura?
+        # Por ahora simple: si hay enemigos cerca, pelear
+        # Se implementara busqueda de cercania real luego
         
-        for comida in comidas:
-            dx = comida.rect.centerx - cx
-            dy = comida.rect.centery - cy
-            dist = math.sqrt(dx*dx + dy*dy)
-            if dist < dist_min:
-                dist_min = dist
-                cercana = (dx, dy)
-                self.target_food = comida.rect.center # Guardar para dibujar linea
-        
-        # Actualizar mejor distancia historica (Fitness Shaping)
-        # Solo actualizamos si encontramos comida
-        if cercana:
-            if dist_min < self.min_dist_food:
-                self.min_dist_food = dist_min
-        
-        dx_mov, dy_mov = 0, 0
-        if cercana:
-            # Normalizar entradas (dividir por diagonal aprox para que esten entre -1 y 1)
-            # Diagonal de 800x600 es 1000
-            inputs = [cercana[0] / 1000, cercana[1] / 1000]
-            outputs = self.cerebro.pensar(inputs)
-            
-            # Outputs: [Arriba, Abajo, Izq, Der]
-            # Usar diferencia para movimiento continuo
-            # Dy = Abajo - Arriba
-            # Dx = Derecha - Izquierda
-            
-            val_arriba = outputs[0]
-            val_abajo = outputs[1]
-            val_izq = outputs[2]
-            val_der = outputs[3]
-            
-            # Si la diferencia es positiva va hacia una direccion, negativa hacia la otra
-            dy_neto = val_abajo - val_arriba
-            dx_neto = val_der - val_izq
-            
-            # --- ATRACCION / INSTINTO ---
-            # Agregar un vector de "instinto" hacia la comida
-            distancia = math.sqrt(cercana[0]**2 + cercana[1]**2)
-            if distancia > 0:
-                instinto_x = cercana[0] / distancia
-                instinto_y = cercana[1] / distancia
-                
-                # Peso del instinto (0.3 = 30% influencia)
-                PESO_INSTINTO = 0.3
-                
-                dx_neto += instinto_x * PESO_INSTINTO
-                dy_neto += instinto_y * PESO_INSTINTO
 
-            # Umbral pequeño para evitar drifting
-            if abs(dy_neto) > 0.1:
-                dy_mov = 1 if dy_neto > 0 else -1
+        # --- 2. INVENTARIO (Llevar presas a casa) ---
+        if self.inventario:
+            if self.mundo.casas:
+                self.objetivo = self.mundo.casas
+                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        # --- 3. SUEÑO ---
+        if self.sueño > 90 and self.energia < 50:
+            if self.mundo.casas:
+                self.objetivo = self.mundo.casas
+            if self.in_home:
+                self.dormido = True
+            if self.objetivo:
+                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
             
-            if abs(dx_neto) > 0.1:
-                dx_mov = 1 if dx_neto > 0 else -1
+        # Default: Patrullar o Idle
+        self.objetivo = []
+
+class Mujer(Persona):
+    def __init__(self, nombre, mundo, cerebro_movimiento=None, cerebro_decision=None):
+        imagen = pygame.image.load("images/mujer.png")
+        #Escalar imagen
+        imagen = pygame.transform.scale(imagen, (191, 246))
+        if not cerebro_decision:
+            # Inputs: Energia, Hambre, DistanciaHijo
+            # Outputs: Cocina (Casa), Alimenta (Hijo), Come
+            cerebro_decision = Cerebro(3, 6, 3)
             
-        if dx_mov != 0 or dy_mov != 0:
-            self.moving = True
-            self.mover(dx_mov, dy_mov, otros)
-        else:
-            self.moving = False
+        super().__init__(imagen, mundo, cerebro_movimiento, cerebro_decision)
+        self.nombre = nombre
+        self.velocidad = 5
+        self.energia_maxima = 200
+        self.base_fuerza = 25 # Fuerza media
     
-    def morir(self):
-        self.vivo = False
+    def pensar(self, comidas, otros_personajes):
+        """
+        Mujer: Cocina, alimenta a los niños, come, se defiende
+        Prioridad: Cocinar (si hay en casa) > Hambre > Defensa > Inventario > Hijos > Sueño
+        """
 
+        # --- 1. COCINAR / COMER EN CASA ---
+        # Si hay comida en casa, ir a cocinar
+        if self.mundo.casas:
+            casa = self.mundo.casas[0]
+            if hasattr(casa, 'almacen') and casa.almacen and self.hambre > 20:
+                self.objetivo = self.mundo.casas
+                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+                return
+
+        # --- 2. HAMBRE / RECOLECCION ---
+        if self.hambre > 30:
+            # A. Inventario -> Casa
+            if self.inventario:
+                if self.mundo.casas:
+                    self.objetivo = self.mundo.casas
+                    self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+                return
+        
+        # --- 0. DEFENSA ---
+        enemigos = [p for p in otros_personajes if isinstance(p, Zorro) and p.vivo]
+        if enemigos:
+            # Atacar si estan muy cerca
+            self.objetivo = enemigos # Simplificado: Atacar
+            self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+            # B. Recolectar (Bayas) - Mujer prioriza bayas sobre caza agresiva
+            # Pero puede cazar conejos si es necesario
+            conejos = [p for p in otros_personajes if isinstance(p, Conejo) and p.vivo]
+            if comidas:
+                self.objetivo = comidas
+            elif conejos:
+                self.objetivo = conejos
+            
+            if self.objetivo:
+                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        # --- 3. HIJOS ---
+        # Si no tiene hambre, cuida hijos
+        hijos = self.buscar_familia((Kid, Girl, Baby_boy, Baby_girl))
+        if hijos:
+            self.objetivo = hijos
+            self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        # --- 4. SUEÑO ---
+        if self.sueño > 90 and self.energia < 50:
+            if self.mundo.casas:
+                self.objetivo = self.mundo.casas
+            if self.in_home:
+                self.dormido = True
+            if self.objetivo:
+                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        self.objetivo = []
+
+class Kid(Persona):
+    def __init__(self, nombre, mundo, cerebro_movimiento=None, cerebro_decision=None):
+        imagen = pygame.image.load("images/kid.png")
+        #Escalar imagen
+        imagen = pygame.transform.scale(imagen, (191, 246))
+        if not cerebro_decision:
+            # Input: Energia, Hambre
+            # Output: Comer, Jugar
+            cerebro_decision = Cerebro(2, 4, 2)
+
+        super().__init__(imagen, mundo, cerebro_movimiento, cerebro_decision)
+        self.nombre = nombre
+        self.velocidad = 5
+    
+    def pensar(self, comidas, otros_personajes):
+        """Kid: Comer, Jugar"""
+        if self.dormido: 
+            if self.sueño >= 100:
+                self.dormido = False
+            return
+        
+        if self.sueño > 90:
+            if self.mundo.casas: self.objetivo = self.mundo.casas
+            if self.in_home: self.dormido = True
+            if self.objetivo: self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        inputs = [self.energia/100, self.hambre/100]
+        decision = self.cerebro_decision.pensar(inputs)
+        accion = decision.index(max(decision))
+        
+        if accion == 0: # Comer
+            if self.hambre > 40:
+                self.objetivo = comidas
+        elif accion == 1: # Jugar
+            # Jugar con otros ninos
+            amigos = self.buscar_familia((Kid, Girl, Baby_boy, Baby_girl))
+            if amigos: self.objetivo = amigos
+            
+        if self.objetivo:
+            self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+
+class Girl(Persona):
+    def __init__(self, nombre, mundo, cerebro_movimiento=None, cerebro_decision=None):
+        imagen = pygame.image.load("images/girl.png")
+        #Escalar imagen
+        imagen = pygame.transform.scale(imagen, (191, 246))
+        if not cerebro_decision:
+            cerebro_decision = Cerebro(2, 4, 2)
+        super().__init__(imagen, mundo, cerebro_movimiento, cerebro_decision)
+        self.nombre = nombre
+        self.velocidad = 5
+    
+    def pensar(self, comidas, otros_personajes):
+        """Girl: Comer, Jugar"""
+        if self.dormido: 
+            if self.sueño >= 100:
+                self.dormido = False
+            return
+        
+        if self.sueño > 90:
+            if self.mundo.casas: self.objetivo = self.mundo.casas
+            if self.in_home: self.dormido = True
+            if self.objetivo: self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        inputs = [self.energia/100, self.hambre/100]
+        decision = self.cerebro_decision.pensar(inputs)
+        accion = decision.index(max(decision))
+        
+        if accion == 0: # Comer
+            if self.hambre > 40:
+                self.objetivo = comidas
+        elif accion == 1: # Jugar
+            amigos = self.buscar_familia((Kid, Girl, Baby_boy, Baby_girl))
+            if amigos: self.objetivo = amigos
+
+        if self.objetivo:
+            self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+
+class Baby_boy(Persona):
+    def __init__(self, nombre, mundo, cerebro_movimiento=None, cerebro_decision=None):
+        imagen = pygame.image.load("images/baby_boy.png")
+        #Escalar imagen
+        imagen = pygame.transform.scale(imagen, (191-40, 246-40))
+        if not cerebro_decision:
+            cerebro_decision = Cerebro(2, 4, 2)
+        super().__init__(imagen, mundo, cerebro_movimiento, cerebro_decision)
+        self.nombre = nombre
+        self.velocidad = 5
+    
+    def pensar(self, comidas, otros_personajes):
+        """Baby: Comer, Jugar"""
+        if self.dormido: 
+            if self.sueño >= 100:
+                self.dormido = False
+            return
+
+        if self.sueño > 90:
+            if self.mundo.casas: self.objetivo = self.mundo.casas
+            if self.in_home: self.dormido = True
+            if self.objetivo: self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        inputs = [self.energia/100, self.hambre/100]
+        decision = self.cerebro_decision.pensar(inputs)
+        accion = decision.index(max(decision))
+        
+        if accion == 0: # Comer
+            if self.hambre > 40:
+                self.objetivo = comidas # A los bebes los alimentan, pero si tienen hambre buscan?
+        elif accion == 1: # Jugar
+            amigos = self.buscar_familia((Kid, Girl, Baby_boy, Baby_girl))
+            if amigos: self.objetivo = amigos
+
+        if self.objetivo:
+            self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+
+class Baby_girl(Persona):
+    def __init__(self, nombre, mundo, cerebro_movimiento=None, cerebro_decision=None):
+        imagen = pygame.image.load("images/baby_girl.png")
+        #Escalar imagen
+        imagen = pygame.transform.scale(imagen, (191-40, 246-40))
+        if not cerebro_decision:
+            cerebro_decision = Cerebro(2, 4, 2)
+        super().__init__(imagen, mundo, cerebro_movimiento, cerebro_decision)
+        self.nombre = nombre
+        self.velocidad = 5
+    
+    def pensar(self, comidas, otros_personajes):
+        """Baby: Comer, Jugar"""
+        if self.dormido: 
+            if self.sueño >= 100:
+                self.dormido = False
+            return
+        
+        if self.sueño > 90:
+            if self.mundo.casas: self.objetivo = self.mundo.casas
+            if self.in_home: self.dormido = True
+            if self.objetivo: self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        inputs = [self.energia/100, self.hambre/100]
+        decision = self.cerebro_decision.pensar(inputs)
+        accion = decision.index(max(decision))
+        
+        if accion == 0: # Comer
+            if self.hambre > 40:
+                self.objetivo = comidas
+        elif accion == 1: # Jugar
+            amigos = self.buscar_familia((Kid, Girl, Baby_boy, Baby_girl))
+            if amigos: self.objetivo = amigos
+            
+        if self.objetivo:
+            self.buscar_objetivo(self.objetivo, otros=otros_personajes)

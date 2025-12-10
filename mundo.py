@@ -11,12 +11,19 @@ import pygame
 pygame.init()
 
 class Mundo:
-    def __init__(self, fondo):
-        self.ANCHO, self.ALTO = fondo.get_width(), fondo.get_height()
+    def __init__(self):
+        self.ANCHO, self.ALTO = 1200, 600
         self.PANTALLA = pygame.display.set_mode((self.ANCHO, self.ALTO))
         self.RELOJ = pygame.time.Clock()
         self.FPS = 60
-        self.fondo = fondo
+        self.fondo = pygame.image.load("images/Pista.png")
+        self.fondo = pygame.transform.scale(self.fondo, (self.ANCHO, self.ALTO))
+        self.casas = []
+        self.alimentos = []
+        self.conejos = []
+        self.madrigueras = []
+        self.cuevas = []
+        self.personas = []
     
     def mostrar(self):
         self.PANTALLA.blit(self.fondo, (0, 0))
