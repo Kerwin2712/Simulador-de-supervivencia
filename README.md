@@ -25,13 +25,19 @@ Este proyecto es una simulación de ecosistema dinámico donde agentes inteligen
    cd Simulador-de-supervivencia
    ```
 
-2. **Instalar dependencias**:
+2. **Crear y activar el entorno virtual** (Opcional pero recomendado):
+   ```powershell
+   python -m venv venv
+   .\venv\Scripts\activate
+   ```
+
+3. **Instalar dependencias**:
    Asegúrate de tener Python instalado y luego instala Pygame:
    ```bash
    pip install pygame
    ```
 
-3. **Ejecutar la simulación**:
+4. **Ejecutar la simulación**:
    ```bash
    python main.py
    ```
