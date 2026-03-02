@@ -13,9 +13,9 @@ La energia debe bajar con el tiempo y cuando llegue a 0 la persona muere.
 '''
 
 import pygame
-from cerebro import Cerebro
-from personaje import Personaje
-from animal import Conejo, Zorro
+from agents.cerebro import Cerebro
+from agents.personaje import Personaje
+from agents.animales.animal import Conejo, Zorro
 import math
 import random
 

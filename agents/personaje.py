@@ -1,4 +1,4 @@
-from cerebro import Cerebro
+from agents.cerebro import Cerebro
 import pygame
 import random
 import math

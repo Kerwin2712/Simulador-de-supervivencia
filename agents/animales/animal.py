@@ -1,7 +1,7 @@
 
 import pygame
-from personaje import Personaje
-from cerebro import Cerebro
+from agents.personaje import Personaje
+from agents.cerebro import Cerebro
 import random
 
 class Animal(Personaje):

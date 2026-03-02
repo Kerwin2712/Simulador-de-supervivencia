@@ -2,11 +2,11 @@
 Punto de entrada, inicia el mundo y agrega personas
 '''
 import pygame
-from mundo import Mundo
-from persona import Persona, Hombre, Mujer, Kid, Girl, Baby_boy, Baby_girl
-from animal import Zorro, Conejo
-from hogar import Hogar
-from recursos import Comida
+from space.mundo import Mundo
+from agents.humanos.persona import Persona, Hombre, Mujer, Kid, Girl, Baby_boy, Baby_girl
+from agents.animales.animal import Zorro, Conejo
+from elements.hogar import Hogar
+from elements.recursos import Comida
 import random
 import pickle
 import os
