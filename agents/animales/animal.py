@@ -26,8 +26,9 @@ class Zorro(Animal):
             cerebro_decision = Cerebro(5, 8, 4)
             
         super().__init__(imagen, mundo, cerebro_movimiento, cerebro_decision)
-        self.velocidad = 4
+        self.velocidad_base = 4
         self.energia_maxima = 100
+
         self.base_fuerza = 12
     
     def pensar(self, comidas, otros_personajes):
@@ -73,8 +74,9 @@ class Conejo(Animal):
             cerebro_decision = Cerebro(4, 6, 3) # Unused for now
 
         super().__init__(imagen, mundo, cerebro_movimiento, cerebro_decision)
-        self.velocidad = 4 # Rapido
+        self.velocidad_base = 4 # Rapido
         self.energia_maxima = 70
+
         self.base_fuerza = 2
     
     def pensar(self, comidas, otros_personajes):
@@ -107,9 +109,10 @@ class Conejo(Animal):
             if self.mundo.madrigueras:
                 self.objetivo = self.mundo.madrigueras
                 self.buscar_objetivo(self.objetivo, otros=otros_personajes)
-                # Hack de velocidad
-                self.mover(random.choice([-1, 1]), random.choice([-1, 1]), otros_personajes) 
+                # Empuje de pánico aleatorio para desorientar al zorro
+                self.mover(random.uniform(-1, 1), random.uniform(-1, 1), otros_personajes) 
                 return
+
         else:
             self.peligro = False
 

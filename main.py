@@ -3,7 +3,7 @@ Punto de entrada, inicia el mundo y agrega personas
 '''
 import pygame
 from space.mundo import Mundo
-from agents.humanos.persona import Persona, Hombre, Mujer, Kid, Girl, Baby_boy, Baby_girl
+from agents.humanos.persona import Persona, Hombre, Mujer, Kid, Girl, Baby_boy, Baby_girl, Kerwin
 from agents.animales.animal import Zorro, Conejo
 from elements.hogar import Hogar
 from elements.recursos import Comida
@@ -17,9 +17,12 @@ mundo = Mundo()
 
 # Configuración Inicial
 poblacion = []
-# Imagenes (ya cargadas en las clases o aqui si se pasan)
-# Nota: Las clases ahora cargan sus propias imagenes por defecto si no se pasan, 
-# pero mantendremos la compatibilidad si es necesario.
+kerwin = None
+entidad_seleccionada = None
+menu_interaccion_rect = None
+opciones_menu = []
+
+
 
 def crear_poblacion_inicial():
     pob = []
@@ -39,6 +42,10 @@ def crear_poblacion_inicial():
     mundo.cuevas.append(cueva)
     
     # 2. Crear Personajes
+    global kerwin
+    kerwin = Kerwin("Kerwin", mundo)
+    pob.append(kerwin)
+    
     hombre = Hombre("Adan", mundo)
     mujer = Mujer("Eva", mundo)
     pob.extend([hombre, mujer])
@@ -46,7 +53,7 @@ def crear_poblacion_inicial():
     for _ in range(2):
         pob.append(Zorro(mundo))
         
-    for _ in range(6):
+    for _ in range(20):
         pob.append(Conejo(mundo))
     
     # Actualizar listas en mundo para referencias globales
@@ -54,6 +61,7 @@ def crear_poblacion_inicial():
     # Zorro y Conejo son Animales
     
     return pob
+
 
 poblacion = []
 comidas = pygame.sprite.Group()
@@ -66,7 +74,7 @@ def resetear_comida():
         comida = Comida(x, y, mundo=mundo)
         comidas.add(comida)
 
-font_ui = pygame.font.SysFont(None, 30)
+font_ui = pygame.font.SysFont(None, 20)
 
 # --- MENU DE INICIO ---
 rect_boton_inicio = pygame.Rect(mundo.ANCHO // 2 - 100, mundo.ALTO // 2 - 20, 200, 40)
@@ -96,8 +104,8 @@ rect_boton_reset = pygame.Rect(mundo.ANCHO - 210, mundo.ALTO - 60, 200, 40)
 
 # Botones Velocidad
 velocidad_simulacion = 120 # FPS Inicial
-rect_boton_menos = pygame.Rect(mundo.ANCHO - 210, mundo.ALTO - 110, 40, 40)
-rect_boton_mas = pygame.Rect(mundo.ANCHO - 50, mundo.ALTO - 110, 40, 40)
+rect_boton_menos = pygame.Rect(mundo.ANCHO - 210, mundo.ALTO - 170, 40, 40)
+rect_boton_mas = pygame.Rect(mundo.ANCHO - 50, mundo.ALTO - 170, 40, 40)
 
 # Boton Menu
 rect_boton_menu = pygame.Rect(mundo.ANCHO - 210, mundo.ALTO - 110, 200, 40)
@@ -112,6 +120,15 @@ def dibujar_ui_simulacion(superficie):
     pygame.draw.rect(superficie, (50, 50, 200), rect_boton_menu)
     texto_menu = font_ui.render("Menu", True, (255, 255, 255))
     superficie.blit(texto_menu, (rect_boton_menu.x + 70, rect_boton_menu.y + 10))
+
+    # Velocity
+    pygame.draw.rect(superficie, (0, 0, 0), rect_boton_menos)
+    texto_menu = font_ui.render("-", True, (255, 255, 255))
+    superficie.blit(texto_menu, (rect_boton_menos.x + 70, rect_boton_menos.y + 10))
+    pygame.draw.rect(superficie, (0, 0, 0), rect_boton_mas)
+    texto_menu = font_ui.render("+", True, (255, 255, 255))
+    superficie.blit(texto_menu, (rect_boton_mas.x + 70, rect_boton_mas.y + 10))
+
 
     # --- HISTORIAL DE EVENTOS ---
     y_pos = 10
@@ -170,6 +187,40 @@ while True:
                     reiniciar_simulacion()
                 if rect_boton_menu.collidepoint(evento.pos):
                     ESTADO = "MENU"
+                
+                # Interacción con Kerwin
+                if menu_interaccion_rect and menu_interaccion_rect.collidepoint(evento.pos):
+                    # Clic en una opción del menú
+                    for i, (rect, accion) in enumerate(opciones_menu):
+                        if rect.collidepoint(evento.pos):
+                            kerwin.accion_pendiente = accion
+                            kerwin.objetivo_manual = entidad_seleccionada
+                            agregar_evento(f"Kerwin: Objetivo {accion} fijado")
+                            menu_interaccion_rect = None
+                            break
+                else:
+                    # Buscar si se hizo clic en una entidad
+                    entidad_seleccionada = None
+                    menu_interaccion_rect = None
+                    for p in poblacion:
+                        if p.vivo and not p.in_home and p.rect.collidepoint(evento.pos) and p != kerwin:
+                            entidad_seleccionada = p
+                            # Crear menú de opciones
+                            x, y = evento.pos
+                            opciones = ["Atacar", "Comer", "Guardar en Casa"] if isinstance(p, Conejo) else ["Atacar"]
+                            opciones_menu = []
+                            for i, opt in enumerate(opciones):
+                                r = pygame.Rect(x, y + i*25, 120, 25)
+                                opciones_menu.append((r, opt.lower()))
+                            menu_interaccion_rect = pygame.Rect(x, y, 120, len(opciones)*25)
+                            break
+                    
+                    # Si no se clicó ninguna entidad, Kerwin camina hacia el punto del clic
+                    if not entidad_seleccionada:
+                        kerwin.objetivo_manual = evento.pos
+                        kerwin.accion_pendiente = None
+                        agregar_evento(f"Kerwin moviéndose a {evento.pos}")
+
 
     if ESTADO == "MENU":
         dibujar_menu(mundo.PANTALLA)
@@ -240,8 +291,9 @@ while True:
                             agregar_evento(f"{nombre_p} Cazo un {nombre_otro}")
                             
                             # LOOT
-                            if isinstance(p, Persona): # Solo humanos recogen inventario
+                            if isinstance(p, Persona) and p != kerwin: # Solo humanos recogen inventario (Kerwin se maneja manual)
                                 p.guardar_item(otro) # Guardar referencia del muerto
+
                                 # mensaje = f"{p.nombre if hasattr(p,'nombre') else 'Alguien'} recogio un {type(otro).__name__}"
                                 # agregar_evento(mensaje)
                                 # print(mensaje)
@@ -289,6 +341,35 @@ while True:
                                 p.alimentarse(50) # Valor arbitrario o basado en item
                                 agregar_evento(f"{p.nombre} comio del almacen.")
 
+                    # --- LOGICA MANUEL DE KERWIN ---
+                    if p == kerwin and kerwin.objetivo_manual and hasattr(kerwin.objetivo_manual, 'rect') and p.rect.colliderect(kerwin.objetivo_manual.rect):
+                        target = kerwin.objetivo_manual
+                        accion = kerwin.accion_pendiente
+                        
+                        if accion == "atacar":
+                            p.atacar(target)
+                            if not target.vivo:
+                                agregar_evento(f"Kerwin eliminó a {type(target).__name__}")
+                                kerwin.objetivo_manual = None
+                        
+                        elif accion == "comer":
+                            if not target.vivo or isinstance(target, Comida):
+                                p.alimentarse(40)
+                                agregar_evento("Kerwin se ha alimentado")
+                                if hasattr(target, 'morir'): target.morir()
+                                elif isinstance(target, pygame.sprite.Sprite): target.kill()
+                                kerwin.objetivo_manual = None
+                        
+                        elif accion == "guardar en casa":
+                            # Llevar a casa (simplificado: desaparece y va al almacen de la primera casa)
+                            if mundo.casas:
+                                mundo.casas[0].guardar(target)
+                                if hasattr(target, 'kill'): target.kill()
+                                elif hasattr(target, 'vivo'): target.vivo = False
+                                agregar_evento("Kerwin guardó la presa en casa")
+                                kerwin.objetivo_manual = None
+
+
         # Dibujar
         mundo.mostrar() # Fondo
         
@@ -306,5 +387,14 @@ while True:
         
         dibujar_ui_simulacion(mundo.PANTALLA)
         
+        # Dibujar Menú de Interacción si existe
+        if menu_interaccion_rect:
+            pygame.draw.rect(mundo.PANTALLA, (50, 50, 50), menu_interaccion_rect)
+            for rect, texto in opciones_menu:
+                pygame.draw.rect(mundo.PANTALLA, (100, 100, 100), rect, 1)
+                txt_surf = font_ui.render(texto.capitalize(), True, (255, 255, 255))
+                mundo.PANTALLA.blit(txt_surf, (rect.x + 5, rect.y + 5))
+
         pygame.display.update()
+
         mundo.RELOJ.tick(60)

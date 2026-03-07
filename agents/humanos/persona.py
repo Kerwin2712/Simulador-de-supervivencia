@@ -23,7 +23,8 @@ class Persona(Personaje):
     def __init__(self, imagen, mundo, cerebro_movimiento=None, cerebro_decision=None):
         super().__init__(mundo, imagen, cerebro_movimiento, cerebro_decision)
 
-        self.velocidad = 3
+        self.velocidad_base = 3
+
 
         self.inventario = []
 
@@ -67,8 +68,9 @@ class Hombre(Persona):
             
         super().__init__(imagen, mundo, cerebro_movimiento, cerebro_decision)
         self.nombre = nombre
-        self.velocidad = 5
+        self.velocidad_base = 5
         self.energia_maxima = 200
+
         self.base_fuerza = 25 # Mas fuerte que animales
     
     def pensar(self, comidas, otros_personajes):
@@ -142,8 +144,9 @@ class Mujer(Persona):
             
         super().__init__(imagen, mundo, cerebro_movimiento, cerebro_decision)
         self.nombre = nombre
-        self.velocidad = 5
+        self.velocidad_base = 5
         self.energia_maxima = 200
+
         self.base_fuerza = 25 # Fuerza media
     
     def pensar(self, comidas, otros_personajes):
@@ -221,7 +224,8 @@ class Kid(Persona):
 
         super().__init__(imagen, mundo, cerebro_movimiento, cerebro_decision)
         self.nombre = nombre
-        self.velocidad = 5
+        self.velocidad_base = 5
+
     
     def pensar(self, comidas, otros_personajes):
         """Kid: Comer, Jugar"""
@@ -260,7 +264,8 @@ class Girl(Persona):
             cerebro_decision = Cerebro(2, 4, 2)
         super().__init__(imagen, mundo, cerebro_movimiento, cerebro_decision)
         self.nombre = nombre
-        self.velocidad = 5
+        self.velocidad_base = 5
+
     
     def pensar(self, comidas, otros_personajes):
         """Girl: Comer, Jugar"""
@@ -298,7 +303,8 @@ class Baby_boy(Persona):
             cerebro_decision = Cerebro(2, 4, 2)
         super().__init__(imagen, mundo, cerebro_movimiento, cerebro_decision)
         self.nombre = nombre
-        self.velocidad = 5
+        self.velocidad_base = 5
+
     
     def pensar(self, comidas, otros_personajes):
         """Baby: Comer, Jugar"""
@@ -336,7 +342,8 @@ class Baby_girl(Persona):
             cerebro_decision = Cerebro(2, 4, 2)
         super().__init__(imagen, mundo, cerebro_movimiento, cerebro_decision)
         self.nombre = nombre
-        self.velocidad = 5
+        self.velocidad_base = 5
+
     
     def pensar(self, comidas, otros_personajes):
         """Baby: Comer, Jugar"""
@@ -364,3 +371,66 @@ class Baby_girl(Persona):
             
         if self.objetivo:
             self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+
+class Kerwin(Persona):
+    def __init__(self, nombre, mundo, cerebro_movimiento=None):
+        # Usar la imagen específica de kerwin
+        try:
+            imagen = pygame.image.load("images/kerwin.png")
+        except:
+            # Fallback if image not found, use a placeholder or hombre
+            imagen = pygame.image.load("images/hombre.png")
+            
+        # Escalar imagen (asumiendo las mismas proporciones de los otros sprays)
+        imagen = pygame.transform.scale(imagen, (191, 246))
+        
+        # Kerwin no usa cerebro de decisión automático para objetivos.
+        # El usuario es quien decide qué hacer.
+        super().__init__(imagen, mundo, cerebro_movimiento, cerebro_decision=None)
+        self.nombre = nombre
+        self.velocidad_base = 6 # Un poco más rápido por ser héroe
+        self.energia_maxima = 300
+        self.base_fuerza = 40
+        
+        self.accion_pendiente = None # 'atacar', 'atrapar', 'comer'
+        self.objetivo_manual = None  # Entidad seleccionada por el usuario
+
+    def pensar(self, comidas, otros_personajes):
+        """
+        Kerwin no decide solo. Solo se mueve si el usuario le dio un objetivo.
+        """
+        if self.objetivo_manual:
+            # Caso A: Objetivo es una entidad (objeto con rect)
+            if hasattr(self.objetivo_manual, 'rect'):
+                if hasattr(self.objetivo_manual, 'vivo') and not self.objetivo_manual.vivo and self.accion_pendiente != 'comer':
+                    # Si murió y no vamos a comerlo, reseteamos? 
+                    # Dejamos que llegue para 'guardar' si es la accion
+                    pass 
+                self.buscar_objetivo(self.objetivo_manual, otros=otros_personajes)
+            
+            # Caso B: Objetivo es una coordenada (tupla x, y)
+            elif isinstance(self.objetivo_manual, (tuple, list)):
+                target_pos = self.objetivo_manual
+                cx, cy = self.x + self.ancho_sprite/2, self.y + self.alto_sprite/2
+                dx = target_pos[0] - cx
+                dy = target_pos[1] - cy
+                dist = math.sqrt(dx*dx + dy*dy)
+                
+                if dist > 5: # Radio de parada
+                    # Calcular dirección normalizada
+                    ndx = dx / dist
+                    ndy = dy / dist
+                    # Suavizar llegada: si está cerca de 15px, reducir fuerza
+                    fuerza_llegada = min(1.0, dist / 15.0)
+                    self.mover(ndx * fuerza_llegada, ndy * fuerza_llegada, otros_personajes)
+                    self.moving = True
+                else:
+                    # Llegó al punto: frenado fuerte
+                    self.vx *= 0.2
+                    self.vy *= 0.2
+                    self.moving = False
+                    self.objetivo_manual = None 
+
+        else:
+            self.moving = False
+

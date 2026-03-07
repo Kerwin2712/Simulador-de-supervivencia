@@ -35,9 +35,21 @@ class Personaje:
         self.direccion = 0 # 0: Abajo, 1: Izquierda, 2: Derecha, 3: Arriba
         self.frame = 0     # 0-3
         self.velocidad_base = 3
-        self.velocidad = self.velocidad_base
         self.contador_animacion = 0
         self.velocidad_animacion = self.velocidad_base # Cambiar frame cada X ticks
+        
+        # Unificar velocidad (usar velocidad_base como fuente de verdad)
+        self.velocidad = self.velocidad_base
+        
+        # Física para movimiento suave
+        self.vx = 0.0
+        self.vy = 0.0
+        self.friccion = 0.8 # Un poco menos de fricción para más inercia
+        # La aceleración ahora será dinámica según la velocidad deseada
+        self.aceleracion_base = 0.8 
+
+
+        
         #Estado de la persona
         self.vivo = True
         self.peligro = False
@@ -120,31 +132,46 @@ class Personaje:
             self.mundo.PANTALLA.blit(texto, (x_barra, y_sueno + 5))
 
     
-    def mover(self, dx, dy, otros):
-        # Velocidad proporcional a energia
-        # Si energia 100 -> 100% velocidad. Si 0 -> 0% (o minimo 10% para moverse lento)
+    def mover(self, force_x, force_y, otros):
+        # La fuerza_x/y ya vienen normalizadas o escaladas
         factor_energia = max(0.1, self.energia / 100.0)
-        velocidad_actual = self.velocidad_base * factor_energia
+        # Sincronizar velocidad con velocidad_base por si cambió externamente
+        v_max = self.velocidad_base * factor_energia
+        
+        # Aceleración proporcional a la velocidad deseada para que sea responsivo
+        # v_terminal = a * f / (1-f) -> a = v_terminal * (1-f) / f
+        # Para f=0.8, (1-f)/f = 0.2/0.8 = 0.25
+        k_a = (1.0 - self.friccion) / self.friccion
+        accel = v_max * k_a
+        
+        self.vx += force_x * accel
+        self.vy += force_y * accel
+        
+        # Limitar velocidad máxima (con un poco de margen para fluidez)
+        mag = math.sqrt(self.vx**2 + self.vy**2)
+        if mag > v_max:
+            self.vx = (self.vx / mag) * v_max
+            self.vy = (self.vy / mag) * v_max
+
         
         # --- MOVIEMIENTO EN X ---
-        futuro_x = self.x + dx * velocidad_actual
+        futuro_x = self.x + self.vx
         futuro_rect_x = pygame.Rect(futuro_x, self.y, self.ancho_sprite, self.alto_sprite)
         
         colision_x = False
         if otros:
             for otro in otros:
-                if otro is not self and otro.vivo and otro.mostrarme: # Solo colisionar con visibles
-                    # A veces otros es una lista mixta, asegurar que tenga rect
+                if otro is not self and otro.vivo and otro.mostrarme:
                     if hasattr(otro, 'rect') and futuro_rect_x.colliderect(otro.rect):
                         colision_x = True
+                        self.vx = 0 # Frenar en colisión
                         break
         
         if not colision_x:
             self.x = futuro_x
 
         # --- MOVIEMIENTO EN Y ---
-        futuro_y = self.y + dy * velocidad_actual
-        # Usamos self.x ya actualizado (o no) para el rectangulo de Y
+        futuro_y = self.y + self.vy
         futuro_rect_y = pygame.Rect(self.x, futuro_y, self.ancho_sprite, self.alto_sprite)
         
         colision_y = False
@@ -153,22 +180,39 @@ class Personaje:
                 if otro is not self and otro.vivo and otro.mostrarme:
                     if hasattr(otro, 'rect') and futuro_rect_y.colliderect(otro.rect):
                         colision_y = True
+                        self.vy = 0 # Frenar en colisión
                         break
         
         if not colision_y:
             self.y = futuro_y
             
-        # Determinar direccion
-        if dy > 0: self.direccion = 0 # Abajo
-        elif dy < 0: self.direccion = 3 # Arriba
-        
-        if dx < 0: self.direccion = 1 # Izquierda
-        elif dx > 0: self.direccion = 2 # Derecha
-        # Actualizar animacion
-        self.contador_animacion += 1
-        if self.contador_animacion >= self.velocidad_animacion:
-            self.frame = (self.frame + 1) % 4
+        # --- ACTUALIZAR POSICIÓN ---
+        self.x += self.vx
+        self.y += self.vy
+
+        # --- ANIMACIÓN DINÁMICA ---
+        mag = math.sqrt(self.vx**2 + self.vy**2)
+        if mag > 0.5:
+            # Cambiar dirección de mirada si se mueve rápido
+            if abs(self.vy) > abs(self.vx):
+                if self.vy > 0.1: self.direccion = 0 # Abajo
+                elif self.vy < -0.1: self.direccion = 3 # Arriba
+            else:
+                if self.vx < -0.1: self.direccion = 1 # Izquierda
+                elif self.vx > 0.1: self.direccion = 2 # Derecha
+            
+            # Acelerar la animación según qué tan rápido vaya
+            # Velocidad máx=5 -> frames cada 3 ticks. Velocidad=1 -> cada 15 ticks
+            current_anim_speed = max(2, int(15.0 / mag))
+            self.contador_animacion += 1
+            if self.contador_animacion >= current_anim_speed:
+                self.frame = (self.frame + 1) % 4
+                self.contador_animacion = 0
+        else:
+            # Casi no se mueve, poner en frame estático
+            self.frame = 0
             self.contador_animacion = 0
+
     
     def actualizar(self):
         if not self.vivo:
@@ -213,18 +257,30 @@ class Personaje:
         self.hambre = max(0, min(100, self.hambre))
         self.sueño = max(0, min(100, self.sueño))
         
+        # Aplicar fricción (desaceleración natural)
+        self.vx *= self.friccion
+        self.vy *= self.friccion
+        if abs(self.vx) < 0.01: self.vx = 0
+        if abs(self.vy) < 0.01: self.vy = 0
+        
         if self.energia <= 0:
+
             self.morir()
         
-        #manejar limites de pantalla 
+        # Aplicar límites de pantalla
         self.x = max(0, min(self.x, self.mundo.ANCHO - self.ancho_sprite))
         self.y = max(0, min(self.y, self.mundo.ALTO - self.alto_sprite))
+        
+        # Detenerse si choca con pared
+        if self.x == 0 or self.x == self.mundo.ANCHO - self.ancho_sprite: self.vx = 0
+        if self.y == 0 or self.y == self.mundo.ALTO - self.alto_sprite: self.vy = 0
 
         self.rect.topleft = (self.x, self.y)
+
     
     def alimentarse(self, valor):
         self.hambre -= valor
-        self.energia += (valor / 2) # Comida tambien da algo de energia
+        self.energia += valor # Comida tambien da algo de energia
         if self.hambre < 0: self.hambre = 0
         if self.energia > 100: self.energia = 100
         
@@ -298,14 +354,15 @@ class Personaje:
             # --- ATRACCION / INSTINTO (FUERTE) ---
             distancia = math.sqrt(cercana[0]**2 + cercana[1]**2)
             if distancia > 0:
-                instinto_x = cercana[0] / distancia
-                instinto_y = cercana[1] / distancia
+                # El instinto baja si está muy cerca (evita jitter)
+                fuerza_llegada = min(1.0, distancia / 20.0) 
+                instinto_x = (cercana[0] / distancia) * fuerza_llegada
+                instinto_y = (cercana[1] / distancia) * fuerza_llegada
                 
-                # AUMENTADO a 2.0 para asegurar movimiento hacia objetivo
-                PESO_INSTINTO = 2.0 
-                
+                PESO_INSTINTO = 2.5 
                 dx_neto += instinto_x * PESO_INSTINTO
                 dy_neto += instinto_y * PESO_INSTINTO
+
 
         else:
             # Si no hay objetivo, movimiento aleatorio para evitar estancamiento
@@ -326,18 +383,14 @@ class Personaje:
         elif self.y > self.mundo.ALTO - margin - self.alto_sprite:
             dy_neto -= force_wall
 
-        dx_mov, dy_mov = 0, 0
-        if abs(dy_neto) > 0.1:
-            dy_mov = 1 if dy_neto > 0 else -1
-        
-        if abs(dx_neto) > 0.1:
-            dx_mov = 1 if dx_neto > 0 else -1
-            
-        if dx_mov != 0 or dy_mov != 0:
+        # Normalizar el empuje para que sea constante independientemente de la distancia
+        dist_neto = math.sqrt(dx_neto**2 + dy_neto**2)
+        if dist_neto > 0.1:
             self.moving = True
-            self.mover(dx_mov, dy_mov, otros)
+            self.mover(dx_neto / dist_neto, dy_neto / dist_neto, otros)
         else:
             self.moving = False
+
 
     def morir(self):
         self.vivo = False
