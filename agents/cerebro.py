@@ -23,6 +23,26 @@ class Cerebro:
         except OverflowError:
             return 0 if x < 0 else 1
 
+    def to_dict(self):
+        return {
+            "n_entradas": self.n_entradas,
+            "n_ocultas": self.n_ocultas,
+            "n_salidas": self.n_salidas,
+            "pesos_eo": self.pesos_eo,
+            "pesos_os": self.pesos_os,
+            "bias_o": self.bias_o,
+            "bias_s": self.bias_s
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        c = cls(data["n_entradas"], data["n_ocultas"], data["n_salidas"])
+        c.pesos_eo = data["pesos_eo"]
+        c.pesos_os = data["pesos_os"]
+        c.bias_o = data["bias_o"]
+        c.bias_s = data["bias_s"]
+        return c
+
     def pensar(self, entradas):
         # Capa Oculta
         ocultas = []

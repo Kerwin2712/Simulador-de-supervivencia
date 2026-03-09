@@ -78,6 +78,7 @@ font_ui = pygame.font.SysFont(None, 20)
 
 # --- MENU DE INICIO ---
 rect_boton_inicio = pygame.Rect(mundo.ANCHO // 2 - 100, mundo.ALTO // 2 - 20, 200, 40)
+rect_boton_editor = pygame.Rect(mundo.ANCHO // 2 - 100, mundo.ALTO // 2 + 40, 200, 40)
 ESTADO = "MENU"
 
 def dibujar_menu(superficie):
@@ -89,9 +90,15 @@ def dibujar_menu(superficie):
     
     # Boton Iniciar
     pygame.draw.rect(superficie, (50, 200, 50), rect_boton_inicio)
-    texto_boton = font_ui.render("INICIAR SIMULACION", True, (20, 20, 20))
+    texto_boton = font_ui.render("SIMULACION ALEATORIA", True, (20, 20, 20))
     rect_texto_boton = texto_boton.get_rect(center=rect_boton_inicio.center)
     superficie.blit(texto_boton, rect_texto_boton)
+
+    # Boton Editor
+    pygame.draw.rect(superficie, (200, 150, 50), rect_boton_editor)
+    texto_boton_ed = font_ui.render("EDITOR DE ESCENARIOS", True, (20, 20, 20))
+    rect_texto_boton_ed = texto_boton_ed.get_rect(center=rect_boton_editor.center)
+    superficie.blit(texto_boton_ed, rect_texto_boton_ed)
 
 def reiniciar_simulacion():
     global poblacion
@@ -167,6 +174,142 @@ def agregar_evento(texto):
     if len(historial_eventos) > 5:
         historial_eventos.pop(0)
 
+# --- VARIABLES DEL EDITOR ---
+herramientas_ed = ["Kerwin", "Hombre", "Mujer", "Zorro", "Conejo", "Casa", "Madriguera", "Cueva", "Comida"]
+herramienta_seleccionada = None
+
+rects_herramientas = []
+btn_w, btn_h = 100, 30
+for i, h in enumerate(herramientas_ed):
+    r = pygame.Rect(10, 10 + i*(btn_h+5), btn_w, btn_h)
+    rects_herramientas.append((r, h))
+
+rect_btn_ed_iniciar = pygame.Rect(mundo.ANCHO - 150, 10, 140, 40)
+rect_btn_ed_limpiar = pygame.Rect(mundo.ANCHO - 150, 60, 140, 40)
+rect_btn_ed_menu = pygame.Rect(mundo.ANCHO - 150, 110, 140, 40)
+rect_btn_ed_guardar = pygame.Rect(mundo.ANCHO - 150, 160, 140, 40)
+rect_btn_ed_cargar = pygame.Rect(mundo.ANCHO - 150, 210, 140, 40)
+
+def guardar_escenario(ruta="escenario.json"):
+    import json
+    data = {"poblacion": [], "casas": [], "madrigueras": [], "cuevas": [], "comidas": []}
+    
+    for p in poblacion:
+        tipo = type(p).__name__
+        p_data = {"tipo": tipo, "x": getattr(p, 'x', p.rect.x), "y": getattr(p, 'y', p.rect.y)}
+        if hasattr(p, 'cerebro_decision') and p.cerebro_decision:
+            p_data["cerebro_decision"] = p.cerebro_decision.to_dict()
+        data["poblacion"].append(p_data)
+        
+    for c in mundo.casas: data["casas"].append({"x": c.rect.x, "y": c.rect.y})
+    for m in mundo.madrigueras: data["madrigueras"].append({"x": m.rect.x, "y": m.rect.y})
+    for c in mundo.cuevas: data["cuevas"].append({"x": c.rect.x, "y": c.rect.y})
+    for c in comidas: data["comidas"].append({"x": c.rect.x, "y": c.rect.y})
+        
+    with open(ruta, "w") as f:
+        json.dump(data, f)
+    print("Escenario guardado")
+
+def cargar_escenario(ruta="escenario.json"):
+    import json, os
+    if not os.path.exists(ruta): return
+        
+    with open(ruta, "r") as f:
+        data = json.load(f)
+        
+    global poblacion, kerwin
+    poblacion.clear()
+    mundo.casas.clear()
+    mundo.madrigueras.clear()
+    mundo.cuevas.clear()
+    comidas.empty()
+    mundo.alimentos.clear()
+    kerwin = None
+    
+    for p_data in data.get("poblacion", []):
+        tipo = p_data["tipo"]
+        x, y = p_data["x"], p_data["y"]
+        if tipo == "Kerwin":
+            kerwin = Kerwin("Kerwin", mundo)
+            kerwin.x, kerwin.y = x, y
+            kerwin.rect.topleft = (x, y)
+            poblacion.append(kerwin)
+        elif tipo == "Hombre":
+            h = Hombre(f"Hombre_{random.randint(1,100)}", mundo)
+            h.x, h.y = x, y
+            h.rect.topleft = (x, y)
+            if "cerebro_decision" in p_data:
+                from agents.cerebro import Cerebro
+                h.cerebro_decision = Cerebro.from_dict(p_data["cerebro_decision"])
+            poblacion.append(h)
+        elif tipo == "Mujer":
+            h = Mujer(f"Mujer_{random.randint(1,100)}", mundo)
+            h.x, h.y = x, y
+            h.rect.topleft = (x, y)
+            if "cerebro_decision" in p_data:
+                from agents.cerebro import Cerebro
+                h.cerebro_decision = Cerebro.from_dict(p_data["cerebro_decision"])
+            poblacion.append(h)
+        elif tipo == "Zorro":
+            z = Zorro(mundo)
+            z.x, z.y = x, y
+            z.rect.topleft = (x, y)
+            if "cerebro_decision" in p_data:
+                from agents.cerebro import Cerebro
+                z.cerebro_decision = Cerebro.from_dict(p_data["cerebro_decision"])
+            poblacion.append(z)
+        elif tipo == "Conejo":
+            c = Conejo(mundo)
+            c.x, c.y = x, y
+            c.rect.topleft = (x, y)
+            if "cerebro_decision" in p_data:
+                from agents.cerebro import Cerebro
+                c.cerebro_decision = Cerebro.from_dict(p_data["cerebro_decision"])
+            poblacion.append(c)
+            
+    for c_data in data.get("casas", []): mundo.casas.append(Hogar(mundo, c_data["x"], c_data["y"], "casa"))
+    for m_data in data.get("madrigueras", []): mundo.madrigueras.append(Hogar(mundo, m_data["x"], m_data["y"], "madriguera"))
+    for c_data in data.get("cuevas", []): mundo.cuevas.append(Hogar(mundo, c_data["x"], c_data["y"], "cueva"))
+    for c_data in data.get("comidas", []):
+        comida = Comida(c_data["x"], c_data["y"], mundo=mundo)
+        comidas.add(comida)
+        mundo.alimentos.append(comida)
+    print("Escenario cargado")
+
+def dibujar_editor(superficie):
+    superficie.fill((40, 60, 40)) # Fondo verde oscuro para diferenciar
+    
+    # Dibujar entidades colocadas
+    for c in mundo.casas: c.mostrar()
+    for c in mundo.madrigueras: c.mostrar()
+    for c in mundo.cuevas: c.mostrar()
+    for comida in comidas: comida.mostrar()
+    for p in poblacion: p.mostrar()
+
+    # UI Tools
+    pygame.draw.rect(superficie, (50, 50, 50), (0, 0, 120, mundo.ALTO))
+    for r, h in rects_herramientas:
+        color = (100, 200, 100) if herramienta_seleccionada == h else (100, 100, 100)
+        pygame.draw.rect(superficie, color, r)
+        txt = font_ui.render(h, True, (0,0,0))
+        superficie.blit(txt, (r.x + 5, r.y + 5))
+        
+    # UI Buttons
+    pygame.draw.rect(superficie, (50, 200, 50), rect_btn_ed_iniciar)
+    superficie.blit(font_ui.render("INICIAR", True, (0,0,0)), (rect_btn_ed_iniciar.x + 10, rect_btn_ed_iniciar.y + 10))
+    
+    pygame.draw.rect(superficie, (200, 50, 50), rect_btn_ed_limpiar)
+    superficie.blit(font_ui.render("LIMPIAR", True, (0,0,0)), (rect_btn_ed_limpiar.x + 10, rect_btn_ed_limpiar.y + 10))
+    
+    pygame.draw.rect(superficie, (50, 50, 200), rect_btn_ed_menu)
+    superficie.blit(font_ui.render("MENU", True, (255,255,255)), (rect_btn_ed_menu.x + 10, rect_btn_ed_menu.y + 10))
+
+    pygame.draw.rect(superficie, (200, 150, 50), rect_btn_ed_guardar)
+    superficie.blit(font_ui.render("GUARDAR", True, (0,0,0)), (rect_btn_ed_guardar.x + 10, rect_btn_ed_guardar.y + 10))
+    
+    pygame.draw.rect(superficie, (50, 150, 200), rect_btn_ed_cargar)
+    superficie.blit(font_ui.render("CARGAR", True, (0,0,0)), (rect_btn_ed_cargar.x + 10, rect_btn_ed_cargar.y + 10))
+
 # Bucle principal
 while True:
     for evento in pygame.event.get():
@@ -180,6 +323,100 @@ while True:
                     poblacion = crear_poblacion_inicial()
                     resetear_comida()
                     ESTADO = "SIMULACION"
+                elif rect_boton_editor.collidepoint(evento.pos):
+                    poblacion = []
+                    mundo.casas = []
+                    mundo.madrigueras = []
+                    mundo.cuevas = []
+                    mundo.personas = []
+                    comidas.empty()
+                    ESTADO = "EDITOR"
+                    herramienta_seleccionada = None
+                    
+        elif ESTADO == "EDITOR":
+            if evento.type == pygame.MOUSEBUTTONDOWN:
+                if evento.button == 1: # Click izquierdo (Colocar)
+                    if rect_btn_ed_iniciar.collidepoint(evento.pos):
+                        mundo.personas = [p for p in poblacion if isinstance(p, Persona)]
+                        ESTADO = "SIMULACION"
+                    elif rect_btn_ed_limpiar.collidepoint(evento.pos):
+                        poblacion.clear()
+                        mundo.casas.clear()
+                        mundo.madrigueras.clear()
+                        mundo.cuevas.clear()
+                        comidas.empty()
+                    elif rect_btn_ed_menu.collidepoint(evento.pos):
+                        ESTADO = "MENU"
+                    elif rect_btn_ed_guardar.collidepoint(evento.pos):
+                        guardar_escenario()
+                    elif rect_btn_ed_cargar.collidepoint(evento.pos):
+                        cargar_escenario()
+                    else:
+                        tool_clicked = False
+                        for r, h in rects_herramientas:
+                            if r.collidepoint(evento.pos):
+                                herramienta_seleccionada = h
+                                tool_clicked = True
+                                break
+                        
+                        if not tool_clicked and herramienta_seleccionada:
+                            if evento.pos[0] > 120:
+                                ex, ey = evento.pos
+                                if herramienta_seleccionada == "Kerwin":
+                                    if kerwin and kerwin in poblacion:
+                                        poblacion.remove(kerwin)
+                                    kerwin = Kerwin("Kerwin", mundo)
+                                    kerwin.x, kerwin.y = ex, ey
+                                    kerwin.rect.topleft = (ex, ey)
+                                    poblacion.append(kerwin)
+                                elif herramienta_seleccionada == "Hombre":
+                                    h_obj = Hombre(f"Hombre_{random.randint(1,100)}", mundo)
+                                    h_obj.x, h_obj.y = ex, ey
+                                    h_obj.rect.topleft = (ex, ey)
+                                    poblacion.append(h_obj)
+                                elif herramienta_seleccionada == "Mujer":
+                                    h_obj = Mujer(f"Mujer_{random.randint(1,100)}", mundo)
+                                    h_obj.x, h_obj.y = ex, ey
+                                    h_obj.rect.topleft = (ex, ey)
+                                    poblacion.append(h_obj)
+                                elif herramienta_seleccionada == "Zorro":
+                                    h_obj = Zorro(mundo)
+                                    h_obj.x, h_obj.y = ex, ey
+                                    h_obj.rect.topleft = (ex, ey)
+                                    poblacion.append(h_obj)
+                                elif herramienta_seleccionada == "Conejo":
+                                    h_obj = Conejo(mundo)
+                                    h_obj.x, h_obj.y = ex, ey
+                                    h_obj.rect.topleft = (ex, ey)
+                                    poblacion.append(h_obj)
+                                elif herramienta_seleccionada == "Casa":
+                                    mundo.casas.append(Hogar(mundo, ex, ey, "casa"))
+                                elif herramienta_seleccionada == "Madriguera":
+                                    mundo.madrigueras.append(Hogar(mundo, ex, ey, "madriguera"))
+                                elif herramienta_seleccionada == "Cueva":
+                                    mundo.cuevas.append(Hogar(mundo, ex, ey, "cueva"))
+                                elif herramienta_seleccionada == "Comida":
+                                    nueva_comida = Comida(ex, ey, mundo=mundo)
+                                    comidas.add(nueva_comida)
+                                    mundo.alimentos.append(nueva_comida)
+                                    
+                elif evento.button == 3: # Click derecho (Borrar)
+                    if evento.pos[0] > 120:
+                        ex, ey = evento.pos
+                        for p in poblacion[:]:
+                            if hasattr(p, 'rect') and p.rect.collidepoint(ex, ey):
+                                poblacion.remove(p)
+                                break
+                        for c in comidas:
+                            if hasattr(c, 'rect') and c.rect.collidepoint(ex, ey):
+                                c.kill()
+                                break
+                        for c in mundo.casas[:]:
+                            if c.rect.collidepoint(ex, ey): mundo.casas.remove(c)
+                        for c in mundo.madrigueras[:]:
+                            if c.rect.collidepoint(ex, ey): mundo.madrigueras.remove(c)
+                        for c in mundo.cuevas[:]:
+                            if c.rect.collidepoint(ex, ey): mundo.cuevas.remove(c)
                     
         elif ESTADO == "SIMULACION":
             if evento.type == pygame.MOUSEBUTTONDOWN:
@@ -242,6 +479,11 @@ while True:
         pygame.display.update()
         mundo.RELOJ.tick(60)
         
+    elif ESTADO == "EDITOR":
+        dibujar_editor(mundo.PANTALLA)
+        pygame.display.update()
+        mundo.RELOJ.tick(60)
+        
     elif ESTADO == "SIMULACION":
         # Actualizar Mundo (listas globales si cambian)
         mundo.personas = [p for p in poblacion if isinstance(p, Persona) and p.vivo]
@@ -296,7 +538,16 @@ while True:
                         es_enemigo = True
                     # Humano ataca Zorro y Conejo
                     elif isinstance(p, Persona) and isinstance(otro, (Zorro, Conejo)):
-                        es_enemigo = True
+                        if p == kerwin:
+                            # Kerwin solo ataca si fue mandado especificamente
+                            if kerwin.objetivo_manual == otro and kerwin.accion_pendiente in ["atacar", "atrapar", "comer"]:
+                                es_enemigo = True
+                        else:
+                            # IA ataca Zorros en defensa propia siempre, Conejos solo si cazan
+                            if isinstance(otro, Zorro):
+                                es_enemigo = True
+                            elif isinstance(otro, Conejo) and p.hambre > 20:
+                                es_enemigo = True
                     
                     if es_enemigo:
                         p.atacar(otro)
