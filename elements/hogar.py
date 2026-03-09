@@ -18,6 +18,8 @@ class Hogar:
         self.rect = pygame.Rect(self.x, self.y, self.imagen.get_width(), self.imagen.get_height())
         
         self.almacen = [] # Para guardar comida
+        self.ocupantes = []
+        self.capacidad = 10 if tipo == "madriguera" else float('inf')
         
     def guardar(self, item):
         self.almacen.append(item)

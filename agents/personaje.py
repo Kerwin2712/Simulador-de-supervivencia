@@ -13,7 +13,7 @@ class Personaje:
         self.alto_sprite = self.imagen.get_height() // 4
         
         # Fuente para estados
-        self.font_estado = pygame.font.SysFont(None, 12)
+        self.font_estado = pygame.font.SysFont("segoe ui emoji", 14)
         
         #Posicion inicial
         self.x = random.randint(0, max(0, mundo.ANCHO - self.ancho_sprite))
@@ -55,6 +55,11 @@ class Personaje:
         self.peligro = False
         self.moving = False
         self.in_home = False
+        self.hogar_actual = None
+        
+        # Fija qué está haciendo dentro de la casa (None, "dormir", "descansar", "jugar")
+        self.accion_actual = None
+
         
         # Estadisticas
         self.energia_maxima = 100
@@ -78,15 +83,32 @@ class Personaje:
         if self.objetivo:
             self.buscar_objetivo(self.objetivo)
 
-    def entrar_casa(self):
+    def entrar_casa(self, modo="descansar", hogar=None):
         self.mostrarme = False
         self.in_home = True
-        self.dormido = True # Asumimos que entra a descansar o dormir
+        self.accion_actual = modo
+        self.hogar_actual = hogar
+        if hogar:
+            hogar.ocupantes.append(self)
+        if modo == "dormir":
+            self.dormido = True
+            
+    def jugar(self):
+        # El juego drena energía pero de momento sirve como acción de IA
+        # Si se añade moral/felicidad, esto la subiría.
+        self.entrar_casa("jugar")
+        self.moving = True # Simula moverse
     
     def salir_casa(self):
         self.mostrarme = True
         self.in_home = False
         self.dormido = False
+        self.accion_actual = None
+        if self.hogar_actual:
+            if self in self.hogar_actual.ocupantes:
+                self.hogar_actual.ocupantes.remove(self)
+            self.hogar_actual = None
+
 
     def mostrar(self):
         if not self.mostrarme:
@@ -123,12 +145,23 @@ class Personaje:
         pixeles_sueno = int((self.sueño / 100) * ancho_barra_total)
         pygame.draw.rect(self.mundo.PANTALLA, (0, 100, 255), (x_barra, y_sueno, pixeles_sueno, alto_barra))
 
-        # --- TEXTO ESTADO (z...z...z... / Grrr...) ---
-        if self.dormido:
-            texto = self.font_estado.render("z...z...z...", True, (255, 255, 255))
-            self.mundo.PANTALLA.blit(texto, (x_barra, y_sueno + 5))
-        elif self.hambre > 50:
-            texto = self.font_estado.render("Grrr...", True, (255, 255, 255))
+        # --- TEXTO ESTADO (Emojis) ---
+        emoji = ""
+        if self.dormido or self.accion_actual == "dormir":
+            emoji = "💤"
+        elif self.accion_actual == "comer":
+            emoji = "🍗"
+        elif self.accion_actual == "jugar":
+            emoji = "🎮"
+        elif getattr(self, 'peligro', False):
+            emoji = "⚠️"
+        elif self.hambre > 70:
+            emoji = "🤤"
+        elif self.objetivo and not self.in_home:
+            emoji = "🚶"
+            
+        if emoji:
+            texto = self.font_estado.render(emoji, True, (255, 255, 255))
             self.mundo.PANTALLA.blit(texto, (x_barra, y_sueno + 5))
 
     
@@ -221,36 +254,61 @@ class Personaje:
         self.edad += 0.01 # Lento envejecimiento
         
         # --- DINAMICAS DE ESTADO ---
-        if self.dormido or self.in_home:
-            # Recuperar energia y bajar sueño
-            self.energia += 0.2
-            self.sueño -= 0.3
-            self.hambre += 0.01 # Hambre sube lento al dormir
-            
-            # Despertar si sueño es 0 O si la energia es suficiente (> 50) O si tiene hambre (> 60)
-            if self.sueño <= 0 or self.energia > 50 or self.hambre > 60:
-                self.sueño = 0
-                self.dormido = False
-                self.salir_casa() # Salir al despertar
+        if self.in_home:
+            if self.accion_actual == "dormir" or self.dormido:
+                self.energia += 0.2
+                self.sueño -= 0.3
+                self.hambre += 0.01 
+                
+                # Despierta solo si ha llenado vida y quitado sueño completo, 
+                # o si la necesidad de hambre es crítica
+                if (self.sueño <= 0 and self.energia >= 90) or self.hambre > 90:
+                    self.sueño = max(0, self.sueño)
+                    self.dormido = False
+                    self.salir_casa() 
+                    
+            elif self.accion_actual == "descansar":
+                # Entrar a la casa sin dormir profundo
+                self.energia += 0.2
+                self.sueño -= 0.1 # Leve descanso de sueño tambien
+                self.hambre += 0.02
+                if self.energia >= 100: self.salir_casa()
+                if self.hambre > 80: self.salir_casa()
+                
+            elif self.accion_actual == "jugar":
+                self.energia -= 0.1
+                self.sueño += 0.05
+                self.hambre += 0.1
+                if self.energia < 30 or self.hambre > 60:
+                    self.salir_casa()
+                    
+            elif self.accion_actual == "comer":
+                # Tiempo digestivo simulado en la casa
+                self.hambre -= 0.5
+                self.energia += 0.2
+                if self.hambre <= 0 or self.energia >= 100:
+                    self.hambre = max(0, self.hambre)
+                    self.salir_casa()
         else:
-            # Despierto
+            # Despierto en el exterior
             self.sueño += 0.05
             
-            # Hambre
             tasa_hambre = 0.05
             if self.moving:
                 tasa_hambre = 0.1
+            if self.accion_actual == "jugar":
+                tasa_hambre = 0.15
+                self.energia -= 0.05
+                
             self.hambre += tasa_hambre
             
-            # Hambre afecta Energia
             if self.hambre > 80:
                 self.energia -= 0.1
             
-            # Sueño maximo causa daño (Agotamiento)
             if self.sueño >= 100:
                 self.sueño = 100
-                self.energia -= 0.1 # Daño por no dormir
-                # self.dormido = True # REMOVIDO: Solo duerme en casa
+                self.energia -= 0.1 
+
         
         # Limites
         self.energia = max(0, min(100, self.energia))

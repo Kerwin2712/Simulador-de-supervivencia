@@ -214,6 +214,21 @@ while True:
                                 opciones_menu.append((r, opt.lower()))
                             menu_interaccion_rect = pygame.Rect(x, y, 120, len(opciones)*25)
                             break
+                            
+                    # Buscar si se hizo clic en una Casa
+                    if not entidad_seleccionada:
+                        for h in mundo.casas:
+                            if h.rect.collidepoint(evento.pos):
+                                entidad_seleccionada = h
+                                x, y = evento.pos
+                                opciones = ["Entrar", "Dormir", "Comer", "Jugar"]
+                                opciones_menu = []
+                                for i, opt in enumerate(opciones):
+                                    r = pygame.Rect(x, y + i*25, 120, 25)
+                                    opciones_menu.append((r, opt.lower()))
+                                menu_interaccion_rect = pygame.Rect(x, y, 120, len(opciones)*25)
+                                break
+
                     
                     # Si no se clicó ninguna entidad, Kerwin camina hacia el punto del clic
                     if not entidad_seleccionada:
@@ -304,29 +319,30 @@ while True:
                 possible_homes = [h for h in hogares if hasattr(h, 'rect') and p.rect.colliderect(h.rect)]
                 
                 for h in possible_homes:
-                    # Entrar a dormir (si tiene sueño) O REFUGIO (Conejo en peligro)
-                    entrar = False
-                    if p.sueño > 70:
-                        entrar = True
-                    elif isinstance(p, Conejo) and getattr(p, 'peligro', False) and h in mundo.madrigueras:
-                        entrar = True
+                    # Que quieren hacer en la casa
+                    razon = getattr(p, 'razon_ir_casa', None)
+                    modo_entrar = None
                     
-                    if entrar:
-                        was_in_home = p.in_home
-                        p.entrar_casa()
-                        if not was_in_home and p.in_home:
-                            pass
-                            # Log especifico
-                            # if isinstance(p, Conejo) and h in mundo.madrigueras:
-                            #    agregar_evento(f"{nombre_p} entro a la madriguera")
+                    if razon == "dormir" or p.sueño > 70:
+                        modo_entrar = "dormir"
+                    elif razon == "descansar" or (isinstance(p, Conejo) and getattr(p, 'peligro', False) and h in mundo.madrigueras):
+                        modo_entrar = "descansar"
+                    
+                    if modo_entrar:
+                        if not p.in_home:
+                            # Verify capacity
+                            if len(h.ocupantes) < h.capacidad:
+                                p.entrar_casa(modo_entrar, hogar=h)
+                        
+                    elif razon == "jugar":
+                        p.jugar()
+                        p.razon_ir_casa = None
                         
                     # Gestion de Inventario (Solo Casas y Humanos)
-                    # "Haz que los humanos solo puedan comer y guardar ... si van hasta la casa"
                     if isinstance(p, Persona) and h in mundo.casas:
                         # A. Guardar items
                         items_a_remover = []
                         for item in p.inventario:
-                            # Guardar todo lo que sea comida (Conejos/Zorros muertos)
                             h.guardar(item)
                             items_a_remover.append(item)
                             agregar_evento(f"{p.nombre} guardo comida en casa.")
@@ -334,12 +350,17 @@ while True:
                         for i in items_a_remover:
                             p.inventario.remove(i)
                             
-                        # B. Comer del almacen si hambre
-                        if p.hambre > 20 and h.almacen:
-                            comida_guardada = h.consumir()
-                            if comida_guardada:
-                                p.alimentarse(50) # Valor arbitrario o basado en item
-                                agregar_evento(f"{p.nombre} comio del almacen.")
+                        # B. Comer del almacen
+                        if (razon == "comer" or p.hambre > 40) and hasattr(h, 'almacen') and h.almacen:
+                            # Verify if there is space inside to eat
+                            if len(h.ocupantes) < h.capacidad:
+                                comida_guardada = h.consumir()
+                                if comida_guardada:
+                                    p.alimentarse(50) 
+                                    p.entrar_casa("comer", hogar=h)
+                                    agregar_evento(f"{p.nombre} entró a comer de la casa.")
+                                    if razon == "comer":
+                                        p.razon_ir_casa = None
 
                     # --- LOGICA MANUEL DE KERWIN ---
                     if p == kerwin and kerwin.objetivo_manual and hasattr(kerwin.objetivo_manual, 'rect') and p.rect.colliderect(kerwin.objetivo_manual.rect):
@@ -351,9 +372,33 @@ while True:
                             if not target.vivo:
                                 agregar_evento(f"Kerwin eliminó a {type(target).__name__}")
                                 kerwin.objetivo_manual = None
+                                
+                        elif accion in ["entrar", "dormir", "comer", "jugar"] and isinstance(target, Hogar):
+                            if len(target.ocupantes) < target.capacidad:
+                                if accion == "entrar":
+                                    p.entrar_casa("descansar", hogar=target)
+                                    agregar_evento("Kerwin ha entrado a descansar")
+                                elif accion == "dormir":
+                                    p.entrar_casa("dormir", hogar=target)
+                                    agregar_evento("Kerwin se ha ido a dormir")
+                                elif accion == "jugar":
+                                    p.entrar_casa("jugar", hogar=target) # Assuming playing logic internally uses entrar_casa but UI logic here overrides 
+                                    agregar_evento("Kerwin esta jugando")
+                                elif accion == "comer":
+                                    target_h = target
+                                    if target_h.almacen:
+                                        comida_guardada = target_h.consumir()
+                                        p.alimentarse(50)
+                                        p.entrar_casa("comer", hogar=target)
+                                        agregar_evento("Kerwin entró a comer de la casa")
+                                    else:
+                                        agregar_evento("No hay comida en la casa")
+                            else:
+                                agregar_evento("¡No hay espacio en este hogar!")
+                            kerwin.objetivo_manual = None
                         
                         elif accion == "comer":
-                            if not target.vivo or isinstance(target, Comida):
+                            if not getattr(target, 'vivo', True) or isinstance(target, Comida):
                                 p.alimentarse(40)
                                 agregar_evento("Kerwin se ha alimentado")
                                 if hasattr(target, 'morir'): target.morir()
@@ -368,6 +413,7 @@ while True:
                                 elif hasattr(target, 'vivo'): target.vivo = False
                                 agregar_evento("Kerwin guardó la presa en casa")
                                 kerwin.objetivo_manual = None
+
 
 
         # Dibujar

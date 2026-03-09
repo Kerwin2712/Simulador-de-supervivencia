@@ -33,16 +33,14 @@ class Persona(Personaje):
             self.objetivo = self.mundo.casas
             self.buscar_objetivo(self.objetivo)
     
-    def entrar_casa(self):
+    def entrar_casa(self, modo="descansar", hogar=None):
         if self.mundo.casas:
             self.objetivo = self.mundo.casas
             self.buscar_objetivo(self.objetivo)
-            self.mostrarme = False
-            self.in_home = True
+        super().entrar_casa(modo=modo, hogar=hogar)
     
     def salir_casa(self):
-        self.mostrarme = True
-        self.in_home = False
+        super().salir_casa()
 
     def guardar_item(self, item):
         if len(self.inventario) < 10:
@@ -75,62 +73,63 @@ class Hombre(Persona):
     
     def pensar(self, comidas, otros_personajes):
         """
-        Hombre: Caza, pelea, come, lleva comida a casa
-        Prioridad: Hambre > Defensa > Inventario > Sueño
+        Hombre: Prioridad: Defensa > Sueño > Comer en casa > Inventario -> Caza > Jugar
         """
-        # --- 0. HAMBRE / RECOLECCION ---
-        # Si tiene hambre, la comida es prioridad (incluso sobre el sueño)
+        self.razon_ir_casa = None
+        
+        # --- 0. DEFENSA / AGRESION ---
+        enemigos = [p for p in otros_personajes if isinstance(p, Zorro) and p.vivo]
+        if enemigos:
+            self.objetivo = enemigos
+            self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        # --- 1. SUEÑO ---
+        if self.sueño > 70:
+            if self.mundo.casas:
+                self.objetivo = self.mundo.casas
+                self.razon_ir_casa = "dormir"
+                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        # --- 2. COMER EN CASA ---
+        if self.hambre > 40 and self.mundo.casas and hasattr(self.mundo.casas[0], 'almacen') and self.mundo.casas[0].almacen:
+            self.objetivo = self.mundo.casas
+            self.razon_ir_casa = "comer"
+            self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        # --- 3. INVENTARIO (Llevar presas a casa) ---
+        if self.inventario:
+            if self.mundo.casas:
+                self.objetivo = self.mundo.casas
+                self.razon_ir_casa = "descansar" # Solo va a dejar algo
+                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        # --- 4. HAMBRE / RECOLECCION EXTERIOR ---
         if self.hambre > 20:
-            # A. Tengo comida en inventario? -> Ir a casa a guardar/comer
-            meat_in_inv = [i for i in self.inventario if isinstance(i, (Zorro, Conejo))]
-            if meat_in_inv:
-                if self.mundo.casas: 
-                    self.objetivo = self.mundo.casas
-                # Si llega a casa, la logica de guardar/comer debe estar en 'actualizar' o collision
-                pass
-            
-            # B. Hay comida en casa? -> Ir a casa
-            # (Simplificacion: Asumimos que sabe lo que hay en casa)
-            # if self.mundo.casas and self.mundo.casas[0].almacen: ...
-            
-            # C. Cazar / Recolectar
             presas = [p for p in otros_personajes if isinstance(p, (Conejo, Zorro)) and p.vivo]
-            if presas and self.fuerza > 5: # Solo caza si tiene fuerza
+            if presas and self.fuerza > 5:
                 self.objetivo = presas
             else:
-                # Recolectar bayas
                 self.objetivo = comidas
             
             if self.objetivo:
                 self.buscar_objetivo(self.objetivo, otros=otros_personajes)
             return
 
-        # --- 1. DEFENSA / AGRESION ---
-        enemigos = [p for p in otros_personajes if isinstance(p, Zorro) and p.vivo]
-        # Distancia segura?
-        # Por ahora simple: si hay enemigos cerca, pelear
-        # Se implementara busqueda de cercania real luego
-        
-
-        # --- 2. INVENTARIO (Llevar presas a casa) ---
-        if self.inventario:
+        # --- 5. JUGAR ---
+        if self.energia > 60 and self.hambre < 30 and self.sueño < 30 and random.random() < 0.05:
             if self.mundo.casas:
                 self.objetivo = self.mundo.casas
-                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
-            return
-
-        # --- 3. SUEÑO ---
-        if self.sueño > 90 and self.energia < 50:
-            if self.mundo.casas:
-                self.objetivo = self.mundo.casas
-            if self.in_home:
-                self.dormido = True
-            if self.objetivo:
+                self.razon_ir_casa = "jugar"
                 self.buscar_objetivo(self.objetivo, otros=otros_personajes)
             return
             
         # Default: Patrullar o Idle
         self.objetivo = []
+
 
 class Mujer(Persona):
     def __init__(self, nombre, mundo, cerebro_movimiento=None, cerebro_decision=None):
@@ -151,37 +150,41 @@ class Mujer(Persona):
     
     def pensar(self, comidas, otros_personajes):
         """
-        Mujer: Cocina, alimenta a los niños, come, se defiende
-        Prioridad: Cocinar (si hay en casa) > Hambre > Defensa > Inventario > Hijos > Sueño
+        Mujer: Defensa > Sueño > Cocinar/Comer > Inventario > Caza
         """
-
-        # --- 1. COCINAR / COMER EN CASA ---
-        # Si hay comida en casa, ir a cocinar
-        if self.mundo.casas:
-            casa = self.mundo.casas[0]
-            if hasattr(casa, 'almacen') and casa.almacen and self.hambre > 20:
-                self.objetivo = self.mundo.casas
-                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
-                return
-
-        # --- 2. HAMBRE / RECOLECCION ---
-        if self.hambre > 30:
-            # A. Inventario -> Casa
-            if self.inventario:
-                if self.mundo.casas:
-                    self.objetivo = self.mundo.casas
-                    self.buscar_objetivo(self.objetivo, otros=otros_personajes)
-                return
+        self.razon_ir_casa = None
         
         # --- 0. DEFENSA ---
         enemigos = [p for p in otros_personajes if isinstance(p, Zorro) and p.vivo]
         if enemigos:
-            # Atacar si estan muy cerca
-            self.objetivo = enemigos # Simplificado: Atacar
+            self.objetivo = enemigos 
             self.buscar_objetivo(self.objetivo, otros=otros_personajes)
             return
-            # B. Recolectar (Bayas) - Mujer prioriza bayas sobre caza agresiva
-            # Pero puede cazar conejos si es necesario
+
+        # --- 1. SUEÑO ---
+        if self.sueño > 70:
+            if self.mundo.casas:
+                self.objetivo = self.mundo.casas
+                self.razon_ir_casa = "dormir"
+                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        # --- 2. COMER EN CASA ---
+        if self.hambre > 40 and self.mundo.casas and hasattr(self.mundo.casas[0], 'almacen') and self.mundo.casas[0].almacen:
+            self.objetivo = self.mundo.casas
+            self.razon_ir_casa = "comer"
+            self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        # --- 3. RECOLECCION / CAZA ---
+        if self.hambre > 30:
+            if self.inventario:
+                if self.mundo.casas:
+                    self.objetivo = self.mundo.casas
+                    self.razon_ir_casa = "descansar" # Solo a dejar
+                    self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+                return
+        
             conejos = [p for p in otros_personajes if isinstance(p, Conejo) and p.vivo]
             if comidas:
                 self.objetivo = comidas
@@ -192,25 +195,23 @@ class Mujer(Persona):
                 self.buscar_objetivo(self.objetivo, otros=otros_personajes)
             return
 
-        # --- 3. HIJOS ---
-        # Si no tiene hambre, cuida hijos
+        # --- 4. HIJOS ---
         hijos = self.buscar_familia((Kid, Girl, Baby_boy, Baby_girl))
         if hijos:
             self.objetivo = hijos
             self.buscar_objetivo(self.objetivo, otros=otros_personajes)
             return
 
-        # --- 4. SUEÑO ---
-        if self.sueño > 90 and self.energia < 50:
+        # --- 5. JUGAR ---
+        if self.energia > 60 and self.hambre < 30 and self.sueño < 30 and random.random() < 0.05:
             if self.mundo.casas:
                 self.objetivo = self.mundo.casas
-            if self.in_home:
-                self.dormido = True
-            if self.objetivo:
+                self.razon_ir_casa = "jugar"
                 self.buscar_objetivo(self.objetivo, otros=otros_personajes)
             return
 
         self.objetivo = []
+
 
 class Kid(Persona):
     def __init__(self, nombre, mundo, cerebro_movimiento=None, cerebro_decision=None):
@@ -229,31 +230,44 @@ class Kid(Persona):
     
     def pensar(self, comidas, otros_personajes):
         """Kid: Comer, Jugar"""
+        self.razon_ir_casa = None
         if self.dormido: 
             if self.sueño >= 100:
                 self.dormido = False
             return
         
-        if self.sueño > 90:
-            if self.mundo.casas: self.objetivo = self.mundo.casas
-            if self.in_home: self.dormido = True
-            if self.objetivo: self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+        if self.sueño > 70:
+            if self.mundo.casas: 
+                self.objetivo = self.mundo.casas
+                self.razon_ir_casa = "dormir"
+                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        if self.hambre > 40 and self.mundo.casas and hasattr(self.mundo.casas[0], 'almacen') and self.mundo.casas[0].almacen:
+            self.objetivo = self.mundo.casas
+            self.razon_ir_casa = "comer"
+            self.buscar_objetivo(self.objetivo, otros=otros_personajes)
             return
 
         inputs = [self.energia/100, self.hambre/100]
         decision = self.cerebro_decision.pensar(inputs)
         accion = decision.index(max(decision))
         
-        if accion == 0: # Comer
+        if accion == 0: # Comer exterior
             if self.hambre > 40:
                 self.objetivo = comidas
         elif accion == 1: # Jugar
-            # Jugar con otros ninos
-            amigos = self.buscar_familia((Kid, Girl, Baby_boy, Baby_girl))
-            if amigos: self.objetivo = amigos
+            # 50% chance de ir a jugar a la casa
+            if random.random() < 0.5 and self.mundo.casas:
+                self.objetivo = self.mundo.casas
+                self.razon_ir_casa = "jugar"
+            else:
+                amigos = self.buscar_familia((Kid, Girl, Baby_boy, Baby_girl))
+                if amigos: self.objetivo = amigos
             
         if self.objetivo:
             self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+
 
 class Girl(Persona):
     def __init__(self, nombre, mundo, cerebro_movimiento=None, cerebro_decision=None):
@@ -269,30 +283,43 @@ class Girl(Persona):
     
     def pensar(self, comidas, otros_personajes):
         """Girl: Comer, Jugar"""
+        self.razon_ir_casa = None
         if self.dormido: 
             if self.sueño >= 100:
                 self.dormido = False
             return
         
-        if self.sueño > 90:
-            if self.mundo.casas: self.objetivo = self.mundo.casas
-            if self.in_home: self.dormido = True
-            if self.objetivo: self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+        if self.sueño > 70:
+            if self.mundo.casas: 
+                self.objetivo = self.mundo.casas
+                self.razon_ir_casa = "dormir"
+                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        if self.hambre > 40 and self.mundo.casas and hasattr(self.mundo.casas[0], 'almacen') and self.mundo.casas[0].almacen:
+            self.objetivo = self.mundo.casas
+            self.razon_ir_casa = "comer"
+            self.buscar_objetivo(self.objetivo, otros=otros_personajes)
             return
 
         inputs = [self.energia/100, self.hambre/100]
         decision = self.cerebro_decision.pensar(inputs)
         accion = decision.index(max(decision))
         
-        if accion == 0: # Comer
+        if accion == 0: # Comer exterior
             if self.hambre > 40:
                 self.objetivo = comidas
         elif accion == 1: # Jugar
-            amigos = self.buscar_familia((Kid, Girl, Baby_boy, Baby_girl))
-            if amigos: self.objetivo = amigos
-
+            if random.random() < 0.5 and self.mundo.casas:
+                self.objetivo = self.mundo.casas
+                self.razon_ir_casa = "jugar"
+            else:
+                amigos = self.buscar_familia((Kid, Girl, Baby_boy, Baby_girl))
+                if amigos: self.objetivo = amigos
+            
         if self.objetivo:
             self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+
 
 class Baby_boy(Persona):
     def __init__(self, nombre, mundo, cerebro_movimiento=None, cerebro_decision=None):
@@ -308,30 +335,43 @@ class Baby_boy(Persona):
     
     def pensar(self, comidas, otros_personajes):
         """Baby: Comer, Jugar"""
+        self.razon_ir_casa = None
         if self.dormido: 
             if self.sueño >= 100:
                 self.dormido = False
             return
+        
+        if self.sueño > 70:
+            if self.mundo.casas: 
+                self.objetivo = self.mundo.casas
+                self.razon_ir_casa = "dormir"
+                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
 
-        if self.sueño > 90:
-            if self.mundo.casas: self.objetivo = self.mundo.casas
-            if self.in_home: self.dormido = True
-            if self.objetivo: self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+        if self.hambre > 40 and self.mundo.casas and hasattr(self.mundo.casas[0], 'almacen') and self.mundo.casas[0].almacen:
+            self.objetivo = self.mundo.casas
+            self.razon_ir_casa = "comer"
+            self.buscar_objetivo(self.objetivo, otros=otros_personajes)
             return
 
         inputs = [self.energia/100, self.hambre/100]
         decision = self.cerebro_decision.pensar(inputs)
         accion = decision.index(max(decision))
         
-        if accion == 0: # Comer
+        if accion == 0: # Comer exterior
             if self.hambre > 40:
-                self.objetivo = comidas # A los bebes los alimentan, pero si tienen hambre buscan?
+                self.objetivo = comidas
         elif accion == 1: # Jugar
-            amigos = self.buscar_familia((Kid, Girl, Baby_boy, Baby_girl))
-            if amigos: self.objetivo = amigos
-
+            if random.random() < 0.5 and self.mundo.casas:
+                self.objetivo = self.mundo.casas
+                self.razon_ir_casa = "jugar"
+            else:
+                amigos = self.buscar_familia((Kid, Girl, Baby_boy, Baby_girl))
+                if amigos: self.objetivo = amigos
+            
         if self.objetivo:
             self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+
 
 class Baby_girl(Persona):
     def __init__(self, nombre, mundo, cerebro_movimiento=None, cerebro_decision=None):
@@ -347,30 +387,43 @@ class Baby_girl(Persona):
     
     def pensar(self, comidas, otros_personajes):
         """Baby: Comer, Jugar"""
+        self.razon_ir_casa = None
         if self.dormido: 
             if self.sueño >= 100:
                 self.dormido = False
             return
         
-        if self.sueño > 90:
-            if self.mundo.casas: self.objetivo = self.mundo.casas
-            if self.in_home: self.dormido = True
-            if self.objetivo: self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+        if self.sueño > 70:
+            if self.mundo.casas: 
+                self.objetivo = self.mundo.casas
+                self.razon_ir_casa = "dormir"
+                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+            return
+
+        if self.hambre > 40 and self.mundo.casas and hasattr(self.mundo.casas[0], 'almacen') and self.mundo.casas[0].almacen:
+            self.objetivo = self.mundo.casas
+            self.razon_ir_casa = "comer"
+            self.buscar_objetivo(self.objetivo, otros=otros_personajes)
             return
 
         inputs = [self.energia/100, self.hambre/100]
         decision = self.cerebro_decision.pensar(inputs)
         accion = decision.index(max(decision))
         
-        if accion == 0: # Comer
+        if accion == 0: # Comer exterior
             if self.hambre > 40:
                 self.objetivo = comidas
         elif accion == 1: # Jugar
-            amigos = self.buscar_familia((Kid, Girl, Baby_boy, Baby_girl))
-            if amigos: self.objetivo = amigos
+            if random.random() < 0.5 and self.mundo.casas:
+                self.objetivo = self.mundo.casas
+                self.razon_ir_casa = "jugar"
+            else:
+                amigos = self.buscar_familia((Kid, Girl, Baby_boy, Baby_girl))
+                if amigos: self.objetivo = amigos
             
         if self.objetivo:
             self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+
 
 class Kerwin(Persona):
     def __init__(self, nombre, mundo, cerebro_movimiento=None):

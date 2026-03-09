@@ -104,13 +104,15 @@ class Conejo(Animal):
         # Simplificacion: Si hay Zorro, HUIR
         if amenazas:
             self.peligro = True
-            # Evasion Inversa: Buscar objetivo opuesto?
-            # Por ahora, simulamos 'huida' yendo a la madriguera rapido o lejos
             if self.mundo.madrigueras:
-                self.objetivo = self.mundo.madrigueras
-                self.buscar_objetivo(self.objetivo, otros=otros_personajes)
-                # Empuje de pánico aleatorio para desorientar al zorro
-                self.mover(random.uniform(-1, 1), random.uniform(-1, 1), otros_personajes) 
+                disponibles = [m for m in self.mundo.madrigueras if len(m.ocupantes) < m.capacidad]
+                if disponibles:
+                    self.objetivo = disponibles
+                    self.buscar_objetivo(self.objetivo, otros=otros_personajes)
+                else:
+                    # Todo lleno, corre lejos (aleatorio guiado o simplemente no target)
+                    self.objetivo = None
+                    self.mover(random.uniform(-1, 1), random.uniform(-1, 1), otros_personajes)
                 return
 
         else:
